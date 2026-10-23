@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from hids.allowlist import Allowlist
 from hids.collector import load_json_fixture
 from hids.events import Event
 from hids.rules import Finding, evaluate
@@ -26,12 +27,16 @@ class ProcessRisk:
         return sum(f.severity for f in self.findings)
 
 
-def score_events(events: list[Event]) -> list[ProcessRisk]:
+def score_events(events: list[Event], allowlist: Allowlist | None = None) -> list[ProcessRisk]:
     """Group findings by process_guid (falls back to image+pid when a
-    non-process event, e.g. 4698, has no ProcessGuid) and sum severity."""
+    non-process event, e.g. 4698, has no ProcessGuid) and sum severity.
+    Findings the allowlist suppresses are dropped before scoring; the
+    allowlist's `hits` records what was dropped."""
     by_process: dict[str, ProcessRisk] = {}
     for event in events:
         findings = evaluate(event)
+        if allowlist is not None:
+            findings = [f for f in findings if not allowlist.suppresses(f)]
         if not findings:
             continue
         key = event.process_guid or f"{event.image or event.extra.get('TaskName', '')}:{event.process_id}"

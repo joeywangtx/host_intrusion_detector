@@ -83,14 +83,19 @@ def _parse_event_xml(xml_text: str) -> Event:
     return Event(event_id=event_id, timestamp=timestamp, computer=computer, extra=data)
 
 
-def read_evtx_via_wevtutil(channel: str, max_events: int = 500) -> Iterator[Event]:
-    """Read recent events from a live/exported channel using `wevtutil qe`.
+def read_evtx_via_wevtutil(channel: str, max_events: int = 0) -> Iterator[Event]:
+    """Read events (newest first) from a live/exported channel using `wevtutil qe`.
 
     `channel` can be a live channel name (e.g. SYSMON_CHANNEL) or a path to
     an exported .evtx file (wevtutil auto-detects and adds /lf for files).
+    `max_events` caps how many of the newest events are read; 0 means no limit.
     """
+    if max_events < 0:
+        raise ValueError("max_events must be >= 0")
     is_file = channel.lower().endswith(".evtx")
-    cmd = ["wevtutil", "qe", channel, f"/c:{max_events}", "/rd:true", "/f:xml"]
+    cmd = ["wevtutil", "qe", channel, "/rd:true", "/f:xml"]
+    if max_events:
+        cmd.append(f"/c:{max_events}")
     if is_file:
         cmd.append("/lf:true")
 
@@ -155,8 +160,12 @@ def load_json_fixture(path: str | Path) -> Iterator[Event]:
             yield Event(**item)
 
 
-def load_events(source: str) -> Iterable[Event]:
-    """Dispatch on source type: live channel name, .evtx path, or .json fixture."""
+def load_events(source: str, max_events: int = 0) -> Iterable[Event]:
+    """Dispatch on source type: live channel name, .evtx path, or .json fixture.
+
+    `max_events` (0 = unlimited) applies to the wevtutil path only; JSON
+    fixtures are always loaded whole.
+    """
     if source.lower().endswith(".json"):
         return list(load_json_fixture(source))
-    return list(read_evtx_via_wevtutil(source))
+    return list(read_evtx_via_wevtutil(source, max_events=max_events))

@@ -106,8 +106,9 @@ anything else → `wevtutil`.
 
 ### 4.1 `wevtutil` path
 
-`wevtutil qe <channel> /c:500 /rd:true /f:xml` (+ `/lf:true` when the source ends
-`.evtx`). Design points:
+`wevtutil qe <channel> /rd:true /f:xml` (+ `/c:<N>` when `hids scan --max-events N`
+is given with N > 0 — the default 0 reads the whole log — and `/lf:true` when the
+source ends `.evtx`). Design points:
 
 - **`check=True`, then translate failures.** `FileNotFoundError` (not on Windows)
   and `CalledProcessError` (channel missing / access denied) are both re-raised

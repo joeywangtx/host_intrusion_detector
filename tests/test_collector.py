@@ -71,6 +71,18 @@ def test_read_evtx_skips_malformed_chunks_but_keeps_good_ones():
     assert events[0].image_name == "cmd.exe"
 
 
+def test_read_evtx_is_unlimited_by_default():
+    with patch("hids.collector.subprocess.run", return_value=_fake_run("")) as run:
+        list(read_evtx_via_wevtutil("Microsoft-Windows-Sysmon/Operational"))
+    assert not any(arg.startswith("/c:") for arg in run.call_args.args[0])
+
+
+def test_read_evtx_passes_max_events_to_wevtutil():
+    with patch("hids.collector.subprocess.run", return_value=_fake_run("")) as run:
+        list(read_evtx_via_wevtutil("Microsoft-Windows-Sysmon/Operational", max_events=500))
+    assert "/c:500" in run.call_args.args[0]
+
+
 def test_read_evtx_raises_collector_error_when_wevtutil_missing():
     with patch("hids.collector.subprocess.run", side_effect=FileNotFoundError()):
         with pytest.raises(CollectorError):

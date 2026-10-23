@@ -1,0 +1,53 @@
+{
+  "entries": [
+    {
+      "name": "Claude Code: shell tool launcher",
+      "rule": "ENCODED_POWERSHELL",
+      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"?\\s+-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"\\$__claudeCodeScript = \\$env:CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT; \\$env:CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT = \\$null; Invoke-Expression -Command \\$__claudeCodeScript\"\\s*",
+      "note": "Runs whatever script Claude Code puts in the env var, in-process. Commands it runs are not separate processes, so allowlisting this hides nothing beyond the launcher itself; processes it spawns are still evaluated."
+    },
+    {
+      "name": "Claude Code: PowerShell command parser",
+      "rule": "ENCODED_POWERSHELL",
+      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"? -NoProfile -NonInteractive -NoLogo -EncodedCommand CgBmAHUAbgBjAHQAaQBvAG4AIABXAHIAaQB0AGUALQBSAGUAcwB1AGwAdAAoACQASgBzAG8AbgApACAAewAKACAAIAAgACAAWwBTAHkAcwB0AGUAbQAuAEMAbwBu[A-Za-z0-9+/=]+",
+      "note": "Matches on the first 48 decoded characters of the payload ('function Write-Result($Json) { [System.Con...'), not the whole thing: a payload with the same opening would also match. Pin the full base64 here to close that gap."
+    },
+    {
+      "name": "VS Code updater: query installed AppX package",
+      "rule": "ENCODED_POWERSHELL",
+      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"? -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"Get-AppxPackage -Name \\'Microsoft\\.VisualStudioCode\\' \\| Select-Object -ExpandProperty PackageFullName\""
+    },
+    {
+      "name": "VS Code updater: register AppX package",
+      "rule": "ENCODED_POWERSHELL",
+      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"? -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"Add-AppxPackage -Path \\'C:\\\\Users\\\\[^\\\\']+\\\\AppData\\\\Local\\\\Programs\\\\Microsoft VS Code\\\\[0-9a-f]{10}\\\\appx\\\\code_x64\\.appx\\' -ExternalLocation \\'C:\\\\Users\\\\[^\\\\']+\\\\AppData\\\\Local\\\\Programs\\\\Microsoft VS Code\\\\[0-9a-f]{10}\\\\appx\\'\""
+    },
+    {
+      "name": "VS Code updater: remove old AppX package",
+      "rule": "ENCODED_POWERSHELL",
+      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"? -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"Remove-AppxPackage -Package \\'Microsoft\\.VisualStudioCode_[0-9.]+_neutral__8wekyb3d8bbwe\\'\""
+    },
+    {
+      "name": "VS Code updater: stop Explorer context-menu host",
+      "rule": "ENCODED_POWERSHELL",
+      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"? -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_Process -Filter \"\"Name = \\'dllhost\\.exe\\'\"\" \\| Where-Object \\{ \\$_\\.CommandLine -like \\'\\*/Processid:1C6DF0C0-192A-4451-BE36-6A59A86A692E\\*\\' \\} \\| ForEach-Object \\{ try \\{ Stop-Process -Id \\$_\\.ProcessId -Force -ErrorAction Stop \\} catch \\{\\} \\}\""
+    },
+    {
+      "name": "VS Code updater: setup executables in temp",
+      "rule": "EXEC_FROM_TEMP",
+      "image": "C:\\\\Users\\\\[^\\\\]+\\\\AppData\\\\Local\\\\Temp\\\\(?:vscode-stable-user-x64\\\\CodeSetup-stable-[0-9a-f]{40}\\.exe|is-[A-Z0-9]+\\.tmp\\\\CodeSetup-stable-[0-9a-f]{40}\\.tmp)",
+      "note": "Path-only match: any file dropped in temp under this name would also match. Add a parent_image matcher to tighten it."
+    },
+    {
+      "name": "Intel Arc graphics software: register event channels",
+      "rule": "ENCODED_POWERSHELL",
+      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"? -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"C:\\\\Program Files\\\\WindowsApps\\\\AppUp\\.IntelArcSoftware_[0-9.]+_x64__8j3eq9eme6ctt\\\\VFS\\\\ProgramFilesX64\\\\Intel\\\\Intel Graphics Software\\\\SetupEventChannels\\.ps1\""
+    },
+    {
+      "name": "Office Click-to-Run: feature update tasks",
+      "rule": "SCHEDULED_TASK_CREATED",
+      "image": "C:\\\\Windows\\\\System32\\\\schtasks\\.exe",
+      "command_line": "schtasks\\.exe /Create /tn \"Microsoft\\\\Office\\\\Office Feature Updates(?: Logon)?\" /XML \"C:\\\\ProgramData\\\\Microsoft\\\\ClickToRun\\\\\\{[0-9A-Fa-f-]+\\}\\\\Microsoft_Office_Office Feature Updates(?: Logon)?\\.xml\""
+    }
+  ]
+}

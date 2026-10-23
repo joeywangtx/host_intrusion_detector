@@ -61,6 +61,13 @@ hids scan
 # Scan an exported .evtx file
 hids scan path\to\exported.evtx
 
+# Only read the newest 500 events (default --max-events 0 = whole log)
+hids scan --max-events 500
+
+# Suppress known-good activity (Claude Code, VS Code updater, Office, ...);
+# the report ends with a count of what each allowlist entry hid
+hids scan --allowlist allowlist.example.json
+
 # Run the labeled benchmark and print precision/recall/F1
 hids benchmark
 
@@ -89,6 +96,7 @@ Not done by this tool — deliberately a manual, elevated step:
 | `hids/collector.py` | Reads events from a live Sysmon channel, an exported `.evtx` file, or a JSON fixture — all via `wevtutil`, no extra install |
 | `hids/rules.py` | 6 detection rules, each returning a `Finding` with a severity and MITRE ATT&CK technique ID |
 | `hids/scorer.py` | Groups findings by process into a risk score; grades the rule set against the labeled fixture |
+| `hids/allowlist.py` | Loads a JSON allowlist and drops findings whose rule and event fields (full-match regex) match a known-good entry |
 | `hids/credaudit_bridge.py` | Shells out to `credaudit --json` and adapts its findings into HIDS's risk-score format |
 | `hids/cli.py` | `hids scan <source>`, `hids benchmark [<fixture>]`, `hids audit-credentials` |
 
