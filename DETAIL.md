@@ -1,4 +1,4 @@
-# host_intrusion_detector
+# Host Intrusion Detector
 
 A lightweight host intrusion detection tool that reads Sysmon-instrumented
 Windows Event Log data and flags suspicious behavior: encoded/obfuscated
