@@ -6,13 +6,16 @@
 
 A lightweight host intrusion detection tool that reads Sysmon-instrumented Windows Event Log data and flags suspicious behavior: encoded/obfuscated PowerShell, Office/browser processes spawning shells (macro-dropper and drive-by-download chains), living-off-the-land binaries (`certutil`, `mshta`, `rundll32`, ...) fetching remote payloads, new scheduled tasks (a common persistence mechanism), and processes executing from temp/download paths. New to these terms? See the [Glossary](Detail.md#glossary).
 
-Like the companion [LLM_Vulnerability_Scanner](https://github.com/joeywangtx/LLM_Vulnerability_Scanner) project, this isn't just a detector — it ships with a hand-labeled corpus of malicious and deliberately similar-looking benign event pairs, graded by precision/recall/F1, so "it catches bad stuff" is a checked claim.
+Like the companion [LLM_Vulnerability_Scanner](https://github.com/joeywangtx/LLM_Vulnerability_Scanner) project, this isn't just a detector. It's checked two ways:
+
+- **A labeled benchmark:** a hand-labeled corpus of malicious and deliberately similar-looking benign event pairs, graded by precision/recall/F1, so "it catches bad stuff" is a checked claim.
+- **Real telemetry:** five days of real Sysmon logs from a dev workstation. Every false positive was traced to its cause, then either fixed in the allowlist or deliberately kept, with the reason written down.
 
 ## Why
 
 Detection-logic claims in security tooling are almost always unverifiable — a tool flags something and a person nods along. The differentiator here: write the answer key first (malicious-vs-benign-but-similar event pairs — e.g. `certutil -urlcache` downloading a payload vs. `certutil -verify` checking a certificate, both using the same binary), then grade the detector against it honestly.
 
-Endpoint telemetry (full command lines, parent/child process trees) is what SOC analysts spend most of their day reading, and writing a rule that doesn't false-positive on *normal* Windows behavior is the actual skill being tested. The benchmark below is built around that: each malicious case is paired with a benign case sharing the same binary or parent process, so a rule that just pattern-matches "certutil.exe" would fail the benchmark, not just look naively accurate.
+Endpoint telemetry (full command lines, parent/child process trees) is what SOC analysts spend most of their day reading, and writing a rule that doesn't false-positive on *normal* Windows behavior is the actual skill being tested. The benchmark below is built around that: each malicious case is paired with a benign case sharing the same binary or parent process, so a rule that just pattern-matches "certutil.exe" would fail the benchmark, not just look naively accurate. The [real-world scan](#real-world-scan) then tests the same skill on data I didn't write.
 
 ## Results
 
@@ -32,6 +35,11 @@ Five days of real Sysmon logging on a dev workstation (Nov 20–25, 2026: 38,060
 - **0 malicious, and 0 hits** on the four behavior rules (LOLBin download, Office/browser spawning a shell, scheduled task).
 - **2 allowlist gaps found and fixed.** Claude Code switched its shell to PowerShell 7 (`pwsh.exe`), and a VS Code update slightly changed the quoting in one of its commands. Together they caused 53 `ENCODED_POWERSHELL` false positives.
 - **2 `EXEC_FROM_TEMP` findings remain (Low), deliberately not allowlisted.** One is a throwaway venv in an AI agent's Temp scratchpad; the other is an installer opened from Downloads. The rule is right about the behavior, and only the user knows the intent.
+
+What it showed:
+
+- **Allowlists drift when software updates.** Both gaps came from legitimate tools changing slightly. Because entries must match exactly, a gap shows up as a visible false positive instead of silently hiding something. The per-entry suppression counts in each report make drift easy to spot.
+- **On a developer machine, the noisiest PowerShell user was an AI coding agent.** 70 of the 77 suppressed findings were Claude Code's own shell calls, which use the same hidden-window, policy-bypass, Base64-encoded flags the rule hunts for.
 
 Full breakdown and takeaways: [Detail.md › Real-world scan](Detail.md#real-world-scan-november-2026).
 

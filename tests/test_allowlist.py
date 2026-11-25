@@ -1,3 +1,4 @@
+import getpass
 import json
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,18 @@ from hids.rules import evaluate
 from hids.scorer import score_events
 
 EXAMPLE = Path(__file__).parent.parent / "allowlist.example.json"
+
+
+def _current_user() -> str:
+    try:
+        return getpass.getuser()
+    except OSError:  # no USERNAME/USER/LOGNAME and no pwd entry
+        return "testuser"
+
+
+# The current user's profile folder, so the fixtures look like this machine's
+# real paths. The allowlist patterns accept any username.
+HOME = rf"C:\Users\{_current_user()}"
 
 PS32 = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 PS_WOW = r"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
@@ -29,8 +42,8 @@ KNOWN_GOOD = [
     (PS32, f'"powershell.exe" {VSCODE_FLAGS} "Get-AppxPackage -Name \'Microsoft.VisualStudioCode\' '
            '| Select-Object -ExpandProperty PackageFullName"'),
     (PS_WOW, f'"{PS32}" {VSCODE_FLAGS} "Add-AppxPackage -Path '
-             r"'C:\Users\<user>\AppData\Local\Programs\Microsoft VS Code\2d0b7506a3\appx\code_x64.appx' "
-             r"-ExternalLocation 'C:\Users\<user>\AppData\Local\Programs\Microsoft VS Code\2d0b7506a3\appx'" '"'),
+             rf"'{HOME}\AppData\Local\Programs\Microsoft VS Code\2d0b7506a3\appx\code_x64.appx' "
+             rf"-ExternalLocation '{HOME}\AppData\Local\Programs\Microsoft VS Code\2d0b7506a3\appx'" '"'),
     (PS_WOW, f'"{PS32}" {VSCODE_FLAGS} "Remove-AppxPackage -Package '
              "'Microsoft.VisualStudioCode_1.0.141.1_neutral__8wekyb3d8bbwe'\""),
     (PS_WOW, f'"{PS32}" {VSCODE_FLAGS} "Get-CimInstance Win32_Process -Filter ""Name = \'dllhost.exe\'"" '
@@ -52,8 +65,8 @@ KNOWN_GOOD = [
      r'schtasks.exe /Create /tn "Microsoft\Office\Office Feature Updates Logon" /XML '
      r'"C:\ProgramData\Microsoft\ClickToRun\{9AC08E99-230B-47e8-9721-4577B7F124EA}'
      r'\Microsoft_Office_Office Feature Updates Logon.xml"'),
-    (r"C:\Users\<user>\AppData\Local\Temp\vscode-stable-user-x64\CodeSetup-stable-e646868227c3e3a9e3f24277c8c7220be42c0be7.exe", ""),
-    (r"C:\Users\<user>\AppData\Local\Temp\is-B2DH1.tmp\CodeSetup-stable-e646868227c3e3a9e3f24277c8c7220be42c0be7.tmp", ""),
+    (rf"{HOME}\AppData\Local\Temp\vscode-stable-user-x64\CodeSetup-stable-e646868227c3e3a9e3f24277c8c7220be42c0be7.exe", ""),
+    (rf"{HOME}\AppData\Local\Temp\is-B2DH1.tmp\CodeSetup-stable-e646868227c3e3a9e3f24277c8c7220be42c0be7.tmp", ""),
 ]
 
 
@@ -94,7 +107,7 @@ def test_example_allowlist_suppresses_known_good(image, command_line):
     # A different -Command behind the VS Code updater's flags.
     (PS32, f'"powershell.exe" {VSCODE_FLAGS} "Invoke-WebRequest http://evil.example"'),
     # Temp executable that only resembles the VS Code setup name.
-    (r"C:\Users\<user>\AppData\Local\Temp\CodeSetup-stable-evil.exe", ""),
+    (rf"{HOME}\AppData\Local\Temp\CodeSetup-stable-evil.exe", ""),
 ])
 def test_example_allowlist_keeps_lookalikes(image, command_line):
     allowlist = load_allowlist(EXAMPLE)

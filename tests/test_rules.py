@@ -1,3 +1,4 @@
+import getpass
 from datetime import datetime
 
 from hids.events import Event
@@ -10,7 +11,22 @@ from hids.rules import (
     rule_scheduled_task_created,
 )
 
+# Fixed on purpose, not the real time: Event requires a timestamp, but no rule
+# reads it, so any value works and a constant keeps runs reproducible. Rules
+# that do care about time should build exact times from this (e.g.
+# NOW + timedelta(seconds=30)) rather than calling datetime.now().
 NOW = datetime(2026, 8, 20, 10, 0, 0)
+
+
+def _current_user() -> str:
+    try:
+        return getpass.getuser()
+    except OSError:  # no USERNAME/USER/LOGNAME and no pwd entry
+        return "testuser"
+
+
+# The current user's profile folder; the rules don't depend on the username.
+HOME = rf"C:\Users\{_current_user()}"
 
 
 def make_event(**kwargs) -> Event:
@@ -91,7 +107,7 @@ def test_certutil_verify_does_not_fire():
 
 
 def test_exec_from_temp_fires():
-    event = make_event(image="C:\\Users\\evan\\AppData\\Local\\Temp\\dropper.exe", command_line="dropper.exe")
+    event = make_event(image=rf"{HOME}\AppData\Local\Temp\dropper.exe", command_line="dropper.exe")
     assert rule_exec_from_temp(event) is not None
 
 
