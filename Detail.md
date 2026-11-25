@@ -6,7 +6,7 @@ PowerShell, Office/browser processes spawning shells (the classic
 macro-dropper and drive-by-download chains), living-off-the-land binaries
 (certutil, mshta, rundll32, ...) used to fetch remote payloads, new
 scheduled tasks (a common persistence mechanism), and processes executing
-from temp/download paths.
+from temp/download paths. New to these terms? See the [Glossary](#glossary).
 
 Like the companion [LLM_Vulnerability_Scanner](../LLM_Vulnerability_Scanner)
 project, this isn't just a detector - it's a detector plus proof that the
@@ -185,6 +185,56 @@ python -m hids.cli scan path\to\exported.evtx
   LLM_Vulnerability_Scanner) that reasons over a process's full command
   line and ancestry chain, compared against the rule engine on the same
   benchmark methodology.
+
+## Glossary
+
+### Attack chains and techniques
+
+- **Macro-dropper chain**: A phishing email delivers an Office document (Word, Excel) with an embedded VBA macro. When the user opens it and clicks "Enable Content", the macro launches a shell (`cmd.exe`, `powershell.exe`, `wscript.exe`), and that shell downloads ("drops") and runs the real malware. On the host this looks like `WINWORD.EXE → powershell.exe`, which normal Office use almost never produces. This is what `OFFICE_SPAWNED_SHELL` detects.
+- **Drive-by-download chain**: The same pattern, but the entry point is the browser. A malicious or compromised website exploits the browser or tricks the user into running a file, which leads to `chrome.exe` / `msedge.exe` / `firefox.exe` spawning a shell. This is what `BROWSER_SPAWNED_SHELL` detects.
+- **Living-off-the-land binaries (LOLBins)**: Legitimate, Microsoft-signed programs that ship with Windows and can be repurposed for attacks, such as downloading files, running scripts, or loading code. Attackers like them because they are already on every machine, trusted by allowlisting tools, and blend in with normal admin activity. The [LOLBAS project](https://lolbas-project.github.io/) catalogs them. The ones this tool watches:
+  - `certutil.exe`: a certificate-management utility. `certutil -urlcache -split -f <url>` downloads arbitrary files.
+  - `mshta.exe`: runs HTML Application (`.hta`) files, including ones fetched straight from a URL, which means it can execute remote script.
+  - `rundll32.exe`: calls an exported function in a DLL. It can be abused to run attacker DLLs or inline script.
+  - `regsvr32.exe`: registers COM DLLs. `regsvr32 /i:<url> scrobj.dll` fetches and runs a remote script (the "Squiblydoo" technique).
+  - `bitsadmin.exe`: controls the Background Intelligent Transfer Service. `bitsadmin /transfer` downloads files in the background.
+- **Payload**: The malicious code an attack ultimately delivers and runs (ransomware, a remote-access trojan, a credential stealer). Droppers and LOLBins are usually just the delivery mechanism.
+- **Download indicator**: A command-line feature showing that a process is fetching remote content, such as a URL (`http://`, `https://`), `-urlcache`, or PowerShell's `DownloadString` / `DownloadFile` (from `System.Net.WebClient`). `LOLBIN_DOWNLOAD` requires one of these, so benign uses like `certutil -verify` don't fire.
+- **Encoded / obfuscated PowerShell**: PowerShell accepts `-EncodedCommand` (or abbreviations like `-enc`, `-e`) followed by a Base64 string of the script, so the real command never appears in plain text in logs or to a casual reader. Legitimate software rarely needs this. Malware uses it constantly, often alongside `-NoProfile`, `-WindowStyle Hidden`, or `-ExecutionPolicy Bypass`. This is what `ENCODED_POWERSHELL` detects.
+- **Persistence**: Any mechanism that lets malware survive a reboot or logoff and keep running, such as scheduled tasks, Run registry keys, services, or startup folders.
+- **Scheduled task**: A Windows Task Scheduler job that runs a program on a trigger (at logon, every N minutes, at boot). It is created with `schtasks /create` or the Task Scheduler API, and it is one of the most common persistence methods. This is what `SCHEDULED_TASK_CREATED` detects.
+- **Execution from temp/download paths**: Legitimate installed software runs from `C:\Program Files` or `C:\Windows`. Freshly dropped malware usually runs from user-writable locations like `%TEMP%`, `%APPDATA%`, or `Downloads`, because those need no admin rights to write to. This is a weak signal on its own (installers do it too), which is why `EXEC_FROM_TEMP` is rated Low.
+
+### Windows telemetry
+
+- **Endpoint telemetry**: Data collected on the host itself (processes, command lines, file writes, network connections), as opposed to network-layer data like packet captures.
+- **Sysmon (System Monitor)**: A free Microsoft Sysinternals driver and service that logs detailed security events to the Windows Event Log, well beyond what Windows records by default. Its configuration file controls what is logged and what noise is filtered out.
+- **Sysmon Event ID 1 (Process Create)**: Logged every time a process starts. It records the image path, full command line, parent process, user, and file hashes. Most rules in this tool read this event.
+- **Security Event ID 4698**: A native Windows Security-log event, "A scheduled task was created". It only appears when the "Audit Other Object Access Events" policy is enabled.
+- **Image**: In Sysmon terms, the executable file a process was started from (e.g. `C:\Windows\System32\certutil.exe`).
+- **Parent/child process tree**: Every Windows process is started by another one. Following the chain (e.g. `explorer.exe → WINWORD.EXE → powershell.exe`) shows *how* something came to run, which often matters more than *what* ran.
+- **`splwow64.exe`**: The print-driver host that Office legitimately spawns when printing. It's the classic benign child of `WINWORD.EXE`, and the reason `OFFICE_SPAWNED_SHELL` checks what the child is instead of firing on any child process.
+- **`.evtx`**: The binary file format for Windows Event Log files. Logs can be exported to `.evtx` and analyzed on another machine.
+- **`wevtutil`**: A built-in Windows command-line tool for querying and exporting event logs. This tool uses it to read both live channels and `.evtx` files without extra dependencies.
+
+### Detection and evaluation
+
+- **HIDS (Host-based Intrusion Detection System)**: A system that watches activity on a single machine for signs of compromise. It complements a network IDS, which watches traffic.
+- **SOC / blue team**: The Security Operations Center, the defenders who triage alerts and investigate incidents. Most of their day is spent reading endpoint telemetry like this.
+- **MITRE ATT&CK**: A public knowledge base of real-world attacker techniques, each with an ID. The IDs used here:
+  - `T1059.001`: Command and Scripting Interpreter: PowerShell
+  - `T1566.001`: Phishing: Spearphishing Attachment (the macro-dropper entry point)
+  - `T1189`: Drive-by Compromise
+  - `T1053.005`: Scheduled Task/Job: Scheduled Task
+  - `T1105`: Ingress Tool Transfer (pulling tools or payloads onto the host)
+  - `T1204`: User Execution (the user is tricked into running something)
+- **Rule / Finding**: A rule is one detection check applied to an event. A finding is what a rule emits when it fires: the rule ID, severity, ATT&CK technique, and the event that triggered it.
+- **Severity**: How urgent a finding is (Low / Medium / High / Critical), based on how strongly the behavior indicates compromise and how rarely it happens legitimately.
+- **Risk score**: The total severity of all findings for one process, so a process that trips several rules ranks above one that trips a single weak rule.
+- **Allowlist**: A list of known-good activity (by rule and event fields) whose findings are suppressed, so regular noise like an editor's auto-updater doesn't bury real alerts.
+- **True positive (TP) / false positive (FP) / false negative (FN)**: A TP is a malicious event correctly flagged. An FP is a benign event wrongly flagged (alert fatigue). An FN is a malicious event missed (a blind spot).
+- **Precision / recall / F1**: Precision = TP / (TP + FP), meaning "when it alerts, how often is it right?" Recall = TP / (TP + FN), meaning "of the real attacks, how many did it catch?" F1 is their harmonic mean, which is high only if both are.
+- **Labeled corpus / benign-but-similar pair**: The answer key in `tests/fixtures/labeled_events.json`. Each malicious event is paired with a benign one that uses the same binary or parent (e.g. `certutil -urlcache <url>` vs. `certutil -verify`), so a rule only scores well if it checks the behavior and not just the program name.
 
 ## License
 

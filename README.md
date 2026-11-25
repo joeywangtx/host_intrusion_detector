@@ -4,7 +4,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A lightweight host intrusion detection tool that reads Sysmon-instrumented Windows Event Log data and flags suspicious behavior: encoded/obfuscated PowerShell, Office/browser processes spawning shells (macro-dropper and drive-by-download chains), living-off-the-land binaries (`certutil`, `mshta`, `rundll32`, ...) fetching remote payloads, new scheduled tasks (a common persistence mechanism), and processes executing from temp/download paths.
+A lightweight host intrusion detection tool that reads Sysmon-instrumented Windows Event Log data and flags suspicious behavior: encoded/obfuscated PowerShell, Office/browser processes spawning shells (macro-dropper and drive-by-download chains), living-off-the-land binaries (`certutil`, `mshta`, `rundll32`, ...) fetching remote payloads, new scheduled tasks (a common persistence mechanism), and processes executing from temp/download paths. New to these terms? See the [Glossary](Detail.md#glossary).
 
 Like the companion [LLM_Vulnerability_Scanner](https://github.com/joeywangtx/LLM_Vulnerability_Scanner) project, this isn't just a detector — it ships with a hand-labeled corpus of malicious and deliberately similar-looking benign event pairs, graded by precision/recall/F1, so "it catches bad stuff" is a checked claim.
 
@@ -100,7 +100,7 @@ Not done by this tool — deliberately a manual, elevated step:
 | `hids/credaudit_bridge.py` | Shells out to `credaudit --json` and adapts its findings into HIDS's risk-score format |
 | `hids/cli.py` | `hids scan <source>`, `hids benchmark [<fixture>]`, `hids audit-credentials` |
 
-Full architecture notes: [`DESIGN.md`](DESIGN.md). Extended writeup with worked examples: [`Detail.md`](Detail.md).
+Full architecture notes: [`DESIGN.md`](DESIGN.md). Extended writeup with worked examples and a glossary of terms: [`Detail.md`](Detail.md).
 
 ## Development
 
