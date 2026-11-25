@@ -3,13 +3,13 @@
     {
       "name": "Claude Code: shell tool launcher",
       "rule": "ENCODED_POWERSHELL",
-      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"?\\s+-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"\\$__claudeCodeScript = \\$env:CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT; \\$env:CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT = \\$null; Invoke-Expression -Command \\$__claudeCodeScript\"\\s*",
+      "command_line": "\"?(?:(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell|(?:C:\\\\Program Files\\\\(?:WindowsApps\\\\Microsoft\\.PowerShell_[0-9.]+_(?:x64|arm64)__8wekyb3d8bbwe|PowerShell\\\\7)\\\\)?pwsh)\\.exe\"?\\s+-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"\\$__claudeCodeScript = \\$env:CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT; \\$env:CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT = \\$null; Invoke-Expression -Command \\$__claudeCodeScript\"\\s*",
       "note": "Runs whatever script Claude Code puts in the env var, in-process. Commands it runs are not separate processes, so allowlisting this hides nothing beyond the launcher itself; processes it spawns are still evaluated."
     },
     {
       "name": "Claude Code: PowerShell command parser",
       "rule": "ENCODED_POWERSHELL",
-      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"? -NoProfile -NonInteractive -NoLogo -EncodedCommand CgBmAHUAbgBjAHQAaQBvAG4AIABXAHIAaQB0AGUALQBSAGUAcwB1AGwAdAAoACQASgBzAG8AbgApACAAewAKACAAIAAgACAAWwBTAHkAcwB0AGUAbQAuAEMAbwBu[A-Za-z0-9+/=]+",
+      "command_line": "\"?(?:(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell|(?:C:\\\\Program Files\\\\(?:WindowsApps\\\\Microsoft\\.PowerShell_[0-9.]+_(?:x64|arm64)__8wekyb3d8bbwe|PowerShell\\\\7)\\\\)?pwsh)\\.exe\"? -NoProfile -NonInteractive -NoLogo -EncodedCommand CgBmAHUAbgBjAHQAaQBvAG4AIABXAHIAaQB0AGUALQBSAGUAcwB1AGwAdAAoACQASgBzAG8AbgApACAAewAKACAAIAAgACAAWwBTAHkAcwB0AGUAbQAuAEMAbwBu[A-Za-z0-9+/=]+",
       "note": "Matches on the first 48 decoded characters of the payload ('function Write-Result($Json) { [System.Con...'), not the whole thing: a payload with the same opening would also match. Pin the full base64 here to close that gap."
     },
     {
@@ -30,7 +30,7 @@
     {
       "name": "VS Code updater: stop Explorer context-menu host",
       "rule": "ENCODED_POWERSHELL",
-      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"? -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_Process -Filter \"\"Name = \\'dllhost\\.exe\\'\"\" \\| Where-Object \\{ \\$_\\.CommandLine -like \\'\\*/Processid:1C6DF0C0-192A-4451-BE36-6A59A86A692E\\*\\' \\} \\| ForEach-Object \\{ try \\{ Stop-Process -Id \\$_\\.ProcessId -Force -ErrorAction Stop \\} catch \\{\\} \\}\""
+      "command_line": "\"?(?:C:\\\\Windows\\\\(?:System32|SysWOW64)\\\\WindowsPowerShell\\\\v1\\.0\\\\)?powershell\\.exe\"? -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_Process -Filter (?:\"\"|\\\\\")Name = \\'dllhost\\.exe\\'(?:\"\"|\\\\\") \\| Where-Object \\{ \\$_\\.CommandLine -like \\'\\*(?:/Processid:)?1C6DF0C0-192A-4451-BE36-6A59A86A692E\\*\\' \\} \\| ForEach-Object \\{ try \\{ Stop-Process -Id \\$_\\.ProcessId -Force -ErrorAction Stop \\} catch \\{\\} \\}\""
     },
     {
       "name": "VS Code updater: setup executables in temp",

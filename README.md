@@ -23,7 +23,17 @@ Precision: 1.00  Recall: 1.00  F1: 1.00
 
 Each malicious row also names the rule it was written to exercise, and the benchmark separately checks that *that* rule fired, rather than just "a rule fired." Reproduce with `hids benchmark`.
 
-Honest caveat: this is a small, hand-curated corpus (8 malicious/benign pairs, one per rule) — 1.00/1.00 on 16 cases you wrote yourself is a sanity check that the rules work as designed, not evidence they hold up against real, unseen attacker behavior or a noisy production environment. The next real test is running `hids scan` against several days of an actual Sysmon log and seeing what fires on ordinary daily use — that's where false positives actually get found.
+Honest caveat: this is a small, hand-curated corpus (8 malicious/benign pairs, one per rule) — 1.00/1.00 on 16 cases you wrote yourself is a sanity check that the rules work as designed, not evidence they hold up against real, unseen attacker behavior or a noisy production environment.
+
+### Real-world scan
+
+Five days of real Sysmon logging on a dev workstation (Nov 20–25, 2026: 38,060 events, 13,609 process creates):
+
+- **0 malicious, and 0 hits** on the four behavior rules (LOLBin download, Office/browser spawning a shell, scheduled task).
+- **2 allowlist gaps found and fixed.** Claude Code switched its shell to PowerShell 7 (`pwsh.exe`), and a VS Code update slightly changed the quoting in one of its commands. Together they caused 53 `ENCODED_POWERSHELL` false positives.
+- **2 `EXEC_FROM_TEMP` findings remain (Low), deliberately not allowlisted.** One is a throwaway venv in an AI agent's Temp scratchpad; the other is an installer opened from Downloads. The rule is right about the behavior, and only the user knows the intent.
+
+Full breakdown and takeaways: [Detail.md › Real-world scan](Detail.md#real-world-scan-november-2026).
 
 ## Detection rules
 
@@ -108,15 +118,15 @@ Full architecture notes: [`DESIGN.md`](DESIGN.md). Extended writeup with worked 
 python -m pytest -q
 ```
 
-34 tests covering: one malicious/benign pair per rule (`test_rules.py`), a benchmark-corpus regression test (`test_scorer.py`), XML parsing + `wevtutil` error handling against captured sample output (`test_collector.py`), subcommand exit codes (`test_cli.py`), and the credaudit bridge with subprocess mocked (`test_credaudit_bridge.py`). The labeled corpus itself is `tests/fixtures/labeled_events.json` (16 hand-labeled synthetic events, 8 malicious/benign pairs). CI runs the suite plus the benchmark on Linux and Windows against Python 3.10, 3.12, and 3.13.
+65 tests covering: one malicious/benign pair per rule (`test_rules.py`), a benchmark-corpus regression test (`test_scorer.py`), XML parsing + `wevtutil` error handling against captured sample output (`test_collector.py`), subcommand exit codes (`test_cli.py`), and the credaudit bridge with subprocess mocked (`test_credaudit_bridge.py`). The labeled corpus itself is `tests/fixtures/labeled_events.json` (16 hand-labeled synthetic events, 8 malicious/benign pairs). CI runs the suite plus the benchmark on Linux and Windows against Python 3.10, 3.12, and 3.13.
 
 ## Status
 
-Rule engine, scorer, and labeled benchmark are done and passing. Live Sysmon collection (`hids scan` against the live channel) is code-complete and unit-tested against captured sample output, but not yet run against a live Sysmon install.
+Rule engine, scorer, and labeled benchmark are done and passing. `hids scan` has been run against five days of a real Sysmon log (see [Real-world scan](#real-world-scan)), and the allowlist was tuned based on the results.
 
 ## Roadmap
 
-- Run against a real Sysmon log once installed; document false positives from ordinary use and tune rules accordingly.
+- Rescan periodically to check that the allowlist holds across software updates; add the Security log (ID 4698) to the export.
 - Stateful correlation across events (e.g. a process that creates a scheduled task *and* was itself spawned from Temp within N seconds — each rule currently sees one event at a time).
 - Optional local-LLM pass compared against the rule engine on the same benchmark methodology, mirroring LLM_Vulnerability_Scanner.
 

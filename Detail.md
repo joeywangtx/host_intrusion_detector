@@ -18,14 +18,13 @@ similar-looking benign event pairs, graded with precision/recall/F1, so
 
 Rule engine, scorer, and labeled benchmark corpus are done and passing - run
 `python -m pytest -q` and `hids benchmark` for the current numbers (see
-[Current results](#current-results) for a recent run). Live Sysmon collection
-is code-complete (`hids scan` against the live `Microsoft-Windows-Sysmon/Operational`
-channel via `wevtutil`) but **not yet run against a live Sysmon install** -
-Sysmon requires an elevated installer and a system-wide logging config
-change, which I'm doing manually rather than having an agent do it (see
-[Installing Sysmon](#installing-sysmon)). The XML parser and `wevtutil`
-error handling for that path are unit-tested against captured sample output,
-but "tested against synthetic input" is not "run against real logs".
+[Current results](#current-results) for a recent run). Sysmon is installed
+on my dev workstation, and `hids scan` has been run against five days of
+its real log (see [Real-world scan](#real-world-scan-november-2026)). That
+run found no attacks, two allowlist gaps (now fixed), and two known kinds
+of false positive from `EXEC_FROM_TEMP`. Installing Sysmon stays a manual,
+elevated step, as does exporting its log (see
+[Installing Sysmon](#installing-sysmon)).
 
 ## Why this project exists
 
@@ -129,9 +128,116 @@ rule), not a claim of production-grade coverage - the honest caveat is that
 1.00/1.00 on 16 cases you wrote yourself is a sanity check that the rules
 work as designed, not evidence they'll hold up against real, unseen
 attacker behavior or a large false-positive-prone production environment.
-The next real test is running `hids scan` against several days of this
-machine's actual Sysmon log once it's installed, and seeing what fires on
-ordinary daily use (that's where false positives actually get discovered).
+The real-world scan below is the other half: what fires on ordinary daily
+use, which is where false positives actually get found.
+
+## Real-world scan (November 2026)
+
+Five days of Sysmon logging on my own dev workstation (Windows 11, SwiftOnSecurity
+config), exported from an elevated terminal and scanned with the example
+allowlist:
+
+```powershell
+# elevated
+wevtutil epl Microsoft-Windows-Sysmon/Operational C:\Users\<user>\sysmon-export.evtx
+# normal
+hids scan C:\Users\<user>\sysmon-export.evtx --allowlist allowlist.example.json
+```
+
+| | |
+|---|---|
+| Time range | 2026-11-20 16:48 to 2026-11-25 16:44 UTC |
+| Events read | 38,060 (13,609 process creates, ID 1; the rest are network, DNS, file, registry, etc.) |
+| Rule hits | 109 (75 `ENCODED_POWERSHELL`, 34 `EXEC_FROM_TEMP`) |
+| Other rules | 0 hits: no LOLBin downloads, no Office/browser spawning a shell, no scheduled-task creation |
+| Confirmed malicious | 0 |
+
+Normal daily use (coding, Claude Code sessions, a VS Code update, a driver
+install) never triggered the four High/Critical behavior rules. Every hit came
+from the two rules that look at flags and paths, not process ancestry.
+
+### What fired, and what was done about it
+
+**1. Claude Code's PowerShell 7 calls: 52 `ENCODED_POWERSHELL` hits, allowlist gap (fixed).**
+Claude Code launches PowerShell with `-ExecutionPolicy Bypass` and, for its
+command parser, `-EncodedCommand`. That is exactly the shape the rule is
+built to catch. The allowlist already covered these command lines, but only
+under Windows PowerShell 5.1 (`powershell.exe`). During the scan window
+Claude Code switched to PowerShell 7 (`pwsh.exe`, installed from the
+Microsoft Store under `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe\`),
+so the same commands from a different binary got through. The two Claude
+Code entries now also accept `pwsh.exe` from that Store path or
+`C:\Program Files\PowerShell\7\`, which are admin-writable locations. A
+`pwsh.exe` anywhere else (e.g. `C:\Users\Public\`) is still flagged, and
+there is a test for that.
+
+**2. VS Code updater: 1 `ENCODED_POWERSHELL` hit, allowlist gap (fixed).**
+During its update, the VS Code installer (`CodeSetup-stable-*.tmp`) runs a
+hidden PowerShell command that stops its Explorer context-menu `dllhost.exe`.
+The allowlist entry was written from an October update, and this update's
+command differs in two small ways: `\"` instead of `""` around the filter,
+and no `/Processid:` prefix before the CLSID. The entry now accepts both
+forms. The command itself must still match in full, so anything appended to
+it still fires.
+
+**3. A venv in a Claude Code scratchpad: 30 `EXEC_FROM_TEMP` hits, expected false positive (left in).**
+An earlier Claude Code session built a throwaway virtualenv under
+`%TEMP%\claude\<session>\scratchpad\ci_sim\venv\` to simulate a CI run of the
+LLM_Vulnerability_Scanner project (`pip install`, `pytest`, `bandit`). The
+rule is right that this is an executable running from Temp. It is benign
+only because I know what made it. I did not allowlist it: the path is
+user-writable and the parents vary (`bash.exe`, `env.exe`, `python.exe`), so
+the only possible entry would match by path alone, which is the same
+weakness the VS Code temp-setup entry already notes. At severity 3 (Low), 30
+grouped findings collapse into one line of output, which is acceptable noise.
+
+**4. An installer run from Downloads: 1 `EXEC_FROM_TEMP` hit, true positive of the behavior, benign intent (left in).**
+`Downloads\sqliteodbc_w64 (1).exe` (the SQLite ODBC driver, installed for
+another project) was started by `chrome.exe` when I opened it from the
+download bar. This is exactly what the rule is for: a freshly downloaded
+binary running from a user-writable folder. Only the person who ran it can
+tell it's benign. `BROWSER_SPAWNED_SHELL` correctly stayed quiet, because
+the child is an installer, not a shell.
+
+After the two allowlist fixes, the same export produces:
+
+```
+[score 3] C:\Users\<user>\AppData\Local\Temp\claude\<session>\scratchpad\ci_sim\venv\Scripts\python.exe  (x30 processes)
+    - EXEC_FROM_TEMP (severity 3, T1204)
+[score 3] C:\Users\<user>\Downloads\sqliteodbc_w64 (1).exe  (x2 processes)
+    - EXEC_FROM_TEMP (severity 3, T1204)
+
+Suppressed by allowlist (77 findings):
+       35  Claude Code: shell tool launcher
+       35  Claude Code: PowerShell command parser
+        2  VS Code updater: query installed AppX package
+        2  VS Code updater: setup executables in temp
+        1  VS Code updater: register AppX package
+        1  VS Code updater: remove old AppX package
+        1  VS Code updater: stop Explorer context-menu host
+```
+
+### Takeaways
+
+- **Allowlists break when software updates.** Both gaps came from legitimate
+  software changing slightly: a different PowerShell binary, different
+  quoting. An exact-match allowlist fails safe (the finding shows up, nothing
+  is silently hidden), but it needs re-checking after updates. The report's
+  per-entry suppression counts make that visible: an entry that suddenly
+  hits 0 times has probably drifted.
+- **The heaviest PowerShell user on this machine is an AI coding agent.**
+  Seventy of the 77 suppressed findings are Claude Code's own shell calls. On
+  developer machines, agent tooling is now a major source of detection noise,
+  and it looks a lot like what the rules are hunting: hidden windows,
+  execution-policy bypass, Base64-encoded commands.
+- **`EXEC_FROM_TEMP` is a context signal, not an alert.** Both remaining
+  findings are correct about the behavior and benign in intent. That is why
+  the rule is rated Low. It is most useful as a score booster when it
+  coincides with another rule on the same process (see Roadmap: stateful
+  correlation).
+- **What this does *not* show:** five quiet days on one machine say nothing
+  about recall against real attacks, because none happened. Recall is still
+  measured only by the labeled benchmark.
 
 ## Installing Sysmon
 
@@ -175,9 +281,10 @@ python -m hids.cli scan path\to\exported.evtx
 
 ## Roadmap
 
-- Run against this machine's real Sysmon log once installed; document
-  what false-positives show up in ordinary use and tune rules accordingly
-  (mirrors the vuln-scanner's "measure, don't assert" approach).
+- ~~Run against this machine's real Sysmon log~~ - first pass done
+  (November 2026, see [Real-world scan](#real-world-scan-november-2026)).
+  Next: rescan after a few weeks to see whether the fixed allowlist holds
+  across further updates, and add the Security log (ID 4698) to the export.
 - Stateful correlation across events (e.g. a process that creates a
   scheduled task *and* was itself spawned from Temp within N seconds -
   currently each rule only sees one event at a time).
