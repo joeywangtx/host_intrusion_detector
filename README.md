@@ -4,18 +4,18 @@
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A lightweight host intrusion detection tool that reads Sysmon-instrumented Windows Event Log data and flags suspicious behavior: encoded/obfuscated PowerShell, Office/browser processes spawning shells (macro-dropper and drive-by-download chains), living-off-the-land binaries (`certutil`, `mshta`, `rundll32`, ...) fetching remote payloads, new scheduled tasks (a common persistence mechanism), and processes executing from temp/download paths. New to these terms? See the [Glossary](Detail.md#glossary).
+A small host intrusion detection tool for Windows. It reads Sysmon event logs and flags suspicious behavior: encoded PowerShell, Office or a browser launching a shell (macro-dropper and drive-by-download chains), built-in binaries like `certutil`, `mshta` and `rundll32` downloading remote payloads, new scheduled tasks (a common persistence method), and programs running from temp or download folders. New to these terms? See the [Glossary](DETAIL.md#glossary).
 
-Like the companion [LLM_Vulnerability_Scanner](https://github.com/joeywangtx/LLM_Vulnerability_Scanner) project, this isn't just a detector. It's checked two ways:
+I tested it in two ways, the same approach as my [LLM_Vulnerability_Scanner](https://github.com/joeywangtx/LLM_Vulnerability_Scanner) project:
 
-- **A labeled benchmark:** a hand-labeled corpus of malicious and deliberately similar-looking benign event pairs, graded by precision/recall/F1, so "it catches bad stuff" is a checked claim.
-- **Real telemetry:** five days of real Sysmon logs from a dev workstation. Every false positive was traced to its cause, then either fixed in the allowlist or deliberately kept, with the reason written down.
+- **A labeled benchmark.** A hand-labeled set of malicious events, each paired with a benign event that looks similar. The detector is scored on precision, recall and F1.
+- **Real logs.** Five days of Sysmon logs from my dev workstation. I traced every false positive to its cause, then either fixed the allowlist or left the finding in and wrote down why.
 
 ## Why
 
-Detection-logic claims in security tooling are almost always unverifiable — a tool flags something and a person nods along. The differentiator here: write the answer key first (malicious-vs-benign-but-similar event pairs — e.g. `certutil -urlcache` downloading a payload vs. `certutil -verify` checking a certificate, both using the same binary), then grade the detector against it honestly.
+Most detection tools ask you to trust that their rules work. I wanted to check mine, so I wrote the answer key first: pairs of malicious and benign events that use the same program. For example, `certutil -urlcache` downloading a payload vs. `certutil -verify` checking a certificate. Then I scored the detector against it.
 
-Endpoint telemetry (full command lines, parent/child process trees) is what SOC analysts spend most of their day reading, and writing a rule that doesn't false-positive on *normal* Windows behavior is the actual skill being tested. The benchmark below is built around that: each malicious case is paired with a benign case sharing the same binary or parent process, so a rule that just pattern-matches "certutil.exe" would fail the benchmark, not just look naively accurate. The [real-world scan](#real-world-scan) then tests the same skill on data I didn't write.
+Endpoint logs (full command lines, parent/child process trees) are what SOC analysts read most of the day. The hard part of writing a rule is not firing on normal Windows activity. Because every malicious case in the benchmark has a benign twin with the same binary or parent process, a rule that only matches on "certutil.exe" fails. The [real-world scan](#real-world-scan) then tries the rules on data I didn't write.
 
 ## Results
 
@@ -24,24 +24,24 @@ Cases: 16  TP=8  FP=0  FN=0
 Precision: 1.00  Recall: 1.00  F1: 1.00
 ```
 
-Each malicious row also names the rule it was written to exercise, and the benchmark separately checks that *that* rule fired, rather than just "a rule fired." Reproduce with `hids benchmark`.
+Each malicious case also names the rule it is meant to trigger, and the benchmark checks that this rule fired, not just any rule. Reproduce with `hids benchmark`.
 
-Honest caveat: this is a small, hand-curated corpus (8 malicious/benign pairs, one per rule) — 1.00/1.00 on 16 cases you wrote yourself is a sanity check that the rules work as designed, not evidence they hold up against real, unseen attacker behavior or a noisy production environment.
+Caveat: the corpus is small (8 malicious/benign pairs, one per rule). 1.00/1.00 on 16 cases written by myself shows the rules work as designed. It doesn't show they would catch real attackers or stay quiet on a busy production network.
 
 ### Real-world scan
 
-Five days of real Sysmon logging on a dev workstation (Nov 20–25, 2026: 38,060 events, 13,609 process creates):
+Five days of Sysmon logging on my dev workstation (Nov 20–25, 2026: 38,060 events, 13,609 process creates):
 
-- **0 malicious, and 0 hits** on the four behavior rules (LOLBin download, Office/browser spawning a shell, scheduled task).
-- **2 allowlist gaps found and fixed.** Claude Code switched its shell to PowerShell 7 (`pwsh.exe`), and a VS Code update slightly changed the quoting in one of its commands. Together they caused 53 `ENCODED_POWERSHELL` false positives.
-- **2 `EXEC_FROM_TEMP` findings remain (Low), deliberately not allowlisted.** One is a throwaway venv in an AI agent's Temp scratchpad; the other is an installer opened from Downloads. The rule is right about the behavior, and only the user knows the intent.
+- **Nothing malicious, and no hits** on the four behavior rules (LOLBin download, Office/browser spawning a shell, scheduled task).
+- **2 allowlist gaps, both fixed.** Claude Code switched its shell to PowerShell 7 (`pwsh.exe`), and a VS Code update changed the quoting in one of its commands. Together they caused 53 `ENCODED_POWERSHELL` false positives.
+- **2 `EXEC_FROM_TEMP` findings left in (Low).** One is a throwaway venv in an AI agent's Temp folder, the other an installer I opened from Downloads. The rule is right about the behavior; whether it's benign depends on who ran it.
 
-What it showed:
+What I learned:
 
-- **Allowlists drift when software updates.** Both gaps came from legitimate tools changing slightly. Because entries must match exactly, a gap shows up as a visible false positive instead of silently hiding something. The per-entry suppression counts in each report make drift easy to spot.
-- **On a developer machine, the noisiest PowerShell user was an AI coding agent.** 70 of the 77 suppressed findings were Claude Code's own shell calls, which use the same hidden-window, policy-bypass, Base64-encoded flags the rule hunts for.
+- **Allowlists break when software updates.** Both gaps came from legitimate tools changing slightly. Entries must match exactly, so a gap shows up as a false positive instead of hiding something. The report prints how many findings each entry suppressed, which makes a drifted entry easy to spot.
+- **The noisiest PowerShell user on my machine was an AI coding agent.** 70 of the 77 suppressed findings were Claude Code's own shell calls. They use the same hidden-window, policy-bypass, Base64-encoded flags the rule looks for.
 
-Full breakdown and takeaways: [Detail.md › Real-world scan](Detail.md#real-world-scan-november-2026).
+Full breakdown: [DETAIL.md › Real-world scan](DETAIL.md#real-world-scan-november-2026).
 
 ## Detection rules
 
@@ -54,7 +54,7 @@ Full breakdown and takeaways: [Detail.md › Real-world scan](Detail.md#real-wor
 | `LOLBIN_DOWNLOAD` | ID 1 (certutil/mshta/rundll32/regsvr32/bitsadmin) | T1105 | High |
 | `EXEC_FROM_TEMP` | ID 1 | T1204 | Low |
 
-Each rule is intentionally narrow rather than a broad keyword match — e.g. `OFFICE_SPAWNED_SHELL` only fires when the *child* is a shell/scripting engine (Word legitimately spawns `splwow64.exe` for printing constantly); `LOLBIN_DOWNLOAD` only fires when the command line also contains a download indicator, not on every certutil invocation.
+The rules are narrow on purpose. `OFFICE_SPAWNED_SHELL` only fires when the child process is a shell or script engine, since Word starts `splwow64.exe` every time you print. `LOLBIN_DOWNLOAD` only fires when the command line also has a download indicator, not on every certutil call.
 
 ## Install
 
@@ -62,18 +62,18 @@ Each rule is intentionally narrow rather than a broad keyword match — e.g. `OF
 pip install -e ".[dev]"
 ```
 
-No live Sysmon install is required to run tests or the benchmark — both use a JSON fixture. Live collection (`hids scan` with no argument) does need Sysmon; see [Installing Sysmon](#installing-sysmon).
+You don't need Sysmon to run the tests or the benchmark; both use a JSON fixture. Live collection (`hids scan` with no argument) does need it. See [Installing Sysmon](#installing-sysmon).
 
 ## Usage
 
-`pip install -e .` puts a `hids` command on PATH; `python -m hids.cli <args>` is equivalent.
+`pip install -e .` adds a `hids` command; `python -m hids.cli <args>` does the same thing.
 
 ```bash
 # Scan a JSON fixture (no Sysmon required)
 hids scan tests/fixtures/labeled_events.json
 
-# Scan the live Sysmon channel (requires Sysmon installed; admin rights to
-# read the Operational log depending on local policy)
+# Scan the live Sysmon channel (requires Sysmon; may need admin rights
+# to read the Operational log, depending on local policy)
 hids scan
 
 # Scan an exported .evtx file
@@ -89,36 +89,36 @@ hids scan --allowlist allowlist.example.json
 # Run the labeled benchmark and print precision/recall/F1
 hids benchmark
 
-# Delegate to the companion credential-auditor project (needs `credaudit`
-# installed and on PATH — see github.com/joeywangtx/credential_auditor)
+# Run my credential-auditor project (needs `credaudit` installed
+# and on PATH, see github.com/joeywangtx/credential_auditor)
 hids audit-credentials
 ```
 
 ## Installing Sysmon
 
-Not done by this tool — deliberately a manual, elevated step:
+The tool doesn't install Sysmon for you. It needs admin rights, so I kept it a manual step:
 
 1. Download Sysmon from [Microsoft Sysinternals](https://learn.microsoft.com/sysinternals/downloads/sysmon).
-2. Get a config file — [SwiftOnSecurity's sysmon-config](https://github.com/SwiftOnSecurity/sysmon-config) is the widely-used community default.
-3. From an elevated (Administrator) terminal:
+2. Get a config file. [SwiftOnSecurity's sysmon-config](https://github.com/SwiftOnSecurity/sysmon-config) is the common community default.
+3. From an Administrator terminal:
    ```
    sysmon64.exe -accepteula -i sysmonconfig-export.xml
    ```
-4. Verify: `Get-Service Sysmon64` (PowerShell) should show `Running`, and Event Viewer should show `Applications and Services Logs > Microsoft > Windows > Sysmon > Operational` filling with EventID 1 entries as you use the machine.
+4. Check it: `Get-Service Sysmon64` (PowerShell) should show `Running`, and Event Viewer should show `Applications and Services Logs > Microsoft > Windows > Sysmon > Operational` filling with EventID 1 entries as you use the machine.
 
 ## How it works
 
-| Module | Responsibility |
+| Module | What it does |
 |---|---|
-| `hids/events.py` | Normalized `Event` dataclass (Sysmon EventID 1 process-create fields + a generic "extra" bag for other IDs) |
-| `hids/collector.py` | Reads events from a live Sysmon channel, an exported `.evtx` file, or a JSON fixture — all via `wevtutil`, no extra install |
-| `hids/rules.py` | 6 detection rules, each returning a `Finding` with a severity and MITRE ATT&CK technique ID |
-| `hids/scorer.py` | Groups findings by process into a risk score; grades the rule set against the labeled fixture |
+| `hids/events.py` | `Event` dataclass: Sysmon EventID 1 (process create) fields, plus an `extra` dict for other event IDs |
+| `hids/collector.py` | Reads events from the live Sysmon channel, an exported `.evtx` file, or a JSON fixture, using `wevtutil` (no extra install) |
+| `hids/rules.py` | The 6 detection rules; each returns a `Finding` with a severity and MITRE ATT&CK ID |
+| `hids/scorer.py` | Sums findings per process into a risk score; scores the rules against the labeled fixture |
 | `hids/allowlist.py` | Loads a JSON allowlist and drops findings whose rule and event fields (full-match regex) match a known-good entry |
-| `hids/credaudit_bridge.py` | Shells out to `credaudit --json` and adapts its findings into HIDS's risk-score format |
+| `hids/credaudit_bridge.py` | Runs `credaudit --json` and converts its findings to HIDS risk scores |
 | `hids/cli.py` | `hids scan <source>`, `hids benchmark [<fixture>]`, `hids audit-credentials` |
 
-Full architecture notes: [`DESIGN.md`](DESIGN.md). Extended writeup with worked examples and a glossary of terms: [`Detail.md`](Detail.md).
+Architecture notes: [`DESIGN.md`](DESIGN.md). Longer writeup with examples and a glossary: [`DETAIL.md`](DETAIL.md).
 
 ## Development
 
@@ -126,18 +126,26 @@ Full architecture notes: [`DESIGN.md`](DESIGN.md). Extended writeup with worked 
 python -m pytest -q
 ```
 
-65 tests covering: one malicious/benign pair per rule (`test_rules.py`), a benchmark-corpus regression test (`test_scorer.py`), XML parsing + `wevtutil` error handling against captured sample output (`test_collector.py`), subcommand exit codes (`test_cli.py`), and the credaudit bridge with subprocess mocked (`test_credaudit_bridge.py`). The labeled corpus itself is `tests/fixtures/labeled_events.json` (16 hand-labeled synthetic events, 8 malicious/benign pairs). CI runs the suite plus the benchmark on Linux and Windows against Python 3.10, 3.12, and 3.13.
+65 tests:
+- `test_rules.py`: one malicious/benign pair per rule
+- `test_scorer.py`: regression test on the benchmark corpus
+- `test_collector.py`: XML parsing and `wevtutil` error handling, using captured sample output
+- `test_allowlist.py`: the allowlist hides known-good activity but nothing else. For example, `pwsh.exe` is only trusted from its normal install folders and still gets flagged anywhere else.
+- `test_cli.py`: subcommand exit codes
+- `test_credaudit_bridge.py`: `hids audit-credentials`, which runs my separate credaudit tool. The tests fake credaudit's output, so credaudit doesn't need to be installed. They check that its findings are read correctly and that a clear error is shown when credaudit isn't installed.
+
+The labeled corpus is `tests/fixtures/labeled_events.json` (16 hand-labeled synthetic events, 8 pairs). CI runs the tests and the benchmark on Linux and Windows with Python 3.10, 3.12 and 3.13.
 
 ## Status
 
-Rule engine, scorer, and labeled benchmark are done and passing. `hids scan` has been run against five days of a real Sysmon log (see [Real-world scan](#real-world-scan)), and the allowlist was tuned based on the results.
+The rule engine, scorer and benchmark are done and passing. I've run `hids scan` on five days of real Sysmon logs (see [Real-world scan](#real-world-scan)) and tuned the allowlist from the results.
 
 ## Roadmap
 
-- Rescan periodically to check that the allowlist holds across software updates; add the Security log (ID 4698) to the export.
-- Stateful correlation across events (e.g. a process that creates a scheduled task *and* was itself spawned from Temp within N seconds — each rule currently sees one event at a time).
-- Optional local-LLM pass compared against the rule engine on the same benchmark methodology, mirroring LLM_Vulnerability_Scanner.
+- Rescan now and then to check the allowlist still holds after software updates; add the Security log (ID 4698) to the export.
+- Connect related events. Right now each rule looks at one event and forgets it. Some attacks only stand out when you link events together: a program starts from Downloads (Low on its own), then a few seconds later sets up a scheduled task (Medium on its own). Together that's a downloaded program making itself run again after every reboot, which should be one High alert. Catching it means remembering recent findings for a short time and checking whether a new event comes from a process that was just flagged.
+- Try a local LLM pass and score it on the same benchmark, like in LLM_Vulnerability_Scanner.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

